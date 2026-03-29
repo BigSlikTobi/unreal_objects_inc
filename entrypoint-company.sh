@@ -4,6 +4,7 @@ set -euo pipefail
 # Start the company API server
 # CLI options are controlled via environment variables
 exec uo-company-server \
+    --rule-pack /app/rule_packs/support_company.json \
     --host 0.0.0.0 \
     --port "${PORT:-8010}" \
     --deployment-mode "${DEPLOYMENT_MODE:-hosted}" \
