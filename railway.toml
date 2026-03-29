@@ -1,53 +1,60 @@
 # Railway deployment configuration
 #
-# This project deploys as 3 services (+ 1 local agent):
+# This project deploys as 5 services (+ 1 local agent):
 #
 #   CLOUD (Railway)
 #   ───────────────
-#   1. backend  — Rule Engine (8001, internal) + Decision Center ($PORT, public)
-#   2. company  — Company API + Dashboard ($PORT, public)
-#   3. mcp      — MCP Server ($PORT, public)
+#   1. rule-engine       — Rule Engine (public + internal)
+#   2. decision-center   — Decision Center (public + internal)
+#   3. company           — Company API + Dashboard (public)
+#   4. mcp               — MCP Server (public)
+#   5. ui                — Unreal Objects admin UI (public)
 #
 #   LOCAL (Raspberry Pi / dev machine)
 #   ──────────────────────────────────
-#   4. worker   — Autonomous bot agent (worker/unreal_worker.py)
+#   6. worker            — Autonomous bot agent (worker/unreal_worker.py)
 #
-# Setup with Railway CLI:
-#   railway link
-#   # Create each service, pointing to its Dockerfile:
-#   #   backend  → Dockerfile.backend
-#   #   company  → Dockerfile.company
-#   #   mcp      → Dockerfile.mcp
+# Each service uses its own Dockerfile:
+#   rule-engine      → Dockerfile.rule-engine
+#   decision-center  → Dockerfile.decision-center
+#   company          → Dockerfile.company
+#   mcp              → Dockerfile.mcp
+#   ui               → Dockerfile.ui
 #
 # ── Environment Variables ────────────────────────────────────────
 #
-# [backend]
-#   PORT=8002                    (exposes Decision Center publicly)
-#   INTERNAL_API_KEY=<secret>    (shared across all services)
+# [rule-engine]
+#   INTERNAL_API_KEY=<secret>
+#   ENVIRONMENT=production
+#
+# [decision-center]
+#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
+#   INTERNAL_API_KEY=<same-secret>
 #   ENVIRONMENT=production
 #
 # [company]
-#   PORT=8010
 #   DEPLOYMENT_MODE=hosted
 #   GENERATOR_MODE=template
 #   ACCELERATION=10
-#   RULE_ENGINE_URL=http://backend.railway.internal:8001
-#   DECISION_CENTER_URL=http://backend.railway.internal:8002
+#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
+#   DECISION_CENTER_URL=http://decision-center.railway.internal:<port>
 #   INTERNAL_API_KEY=<same-secret>
 #   ENVIRONMENT=production
 #
 # [mcp]
-#   PORT=8000
-#   RULE_ENGINE_URL=http://backend.railway.internal:8001
-#   DECISION_CENTER_URL=http://backend.railway.internal:8002
+#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
+#   DECISION_CENTER_URL=http://decision-center.railway.internal:<port>
 #   INTERNAL_API_KEY=<same-secret>
 #   MCP_ADMIN_API_KEY=<generated>
 #   ENVIRONMENT=production
-#   ALLOWED_ORIGINS=https://company-XXX.up.railway.app
+#
+# [ui]  (build-time variables)
+#   VITE_RULE_ENGINE_BASE_URL=https://rule-engine-XXX.up.railway.app
+#   VITE_DECISION_CENTER_BASE_URL=https://decision-center-XXX.up.railway.app
 #
 # [local worker — NOT on Railway]
 #   COMPANY_API_URL=https://company-XXX.up.railway.app
-#   DECISION_CENTER_URL=https://backend-XXX.up.railway.app
+#   DECISION_CENTER_URL=https://decision-center-XXX.up.railway.app
 #   BOT_ID=deborahbot3000
 #   POLL_INTERVAL=5
 #
