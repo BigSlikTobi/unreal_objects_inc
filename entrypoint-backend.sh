@@ -28,14 +28,20 @@ done
 # Load the waste-company rule pack
 echo "Loading rule pack..."
 python3 -c "
-import json, urllib.request
+import json, os, urllib.request
 
 BASE = 'http://127.0.0.1:8001'
+API_KEY = os.environ.get('INTERNAL_API_KEY', '')
 pack = json.loads(open('rule_packs/support_company.json').read())
+
+headers = {'Content-Type': 'application/json'}
+if API_KEY:
+    headers['X-Internal-Key'] = API_KEY
+
 req = urllib.request.Request(
     f'{BASE}/v1/groups',
     data=json.dumps({'name': pack['name'], 'description': pack['description']}).encode(),
-    headers={'Content-Type': 'application/json'},
+    headers=headers,
     method='POST',
 )
 with urllib.request.urlopen(req, timeout=30) as r:
@@ -47,7 +53,7 @@ for rule in pack['rules']:
     req = urllib.request.Request(
         f'{BASE}/v1/groups/{group_id}/rules',
         data=json.dumps(rule).encode(),
-        headers={'Content-Type': 'application/json'},
+        headers=headers,
         method='POST',
     )
     with urllib.request.urlopen(req, timeout=30) as r:
