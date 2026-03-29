@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Starting Rule Engine on :8001..."
-uvicorn rule_engine.app:app --host 0.0.0.0 --port 8001 &
+# Rule Engine always on 8001 (internal only on Railway).
+# Decision Center uses $PORT (Railway-injected) so it gets the public domain.
+RE_PORT=8001
+DC_PORT="${PORT:-8002}"
+
+echo "Starting Rule Engine on :${RE_PORT}..."
+uvicorn rule_engine.app:app --host 0.0.0.0 --port "$RE_PORT" &
 RE_PID=$!
 
-echo "Starting Decision Center on :8002..."
-uvicorn decision_center.app:app --host 0.0.0.0 --port 8002 &
+echo "Starting Decision Center on :${DC_PORT}..."
+uvicorn decision_center.app:app --host 0.0.0.0 --port "$DC_PORT" &
 DC_PID=$!
 
 # Wait for both services to be ready
-for port in 8001 8002; do
+for port in $RE_PORT $DC_PORT; do
     for i in $(seq 1 60); do
         if python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$port/docs', timeout=2)" 2>/dev/null; then
             echo "  Port $port ready"

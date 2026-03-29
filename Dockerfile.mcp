@@ -1,0 +1,15 @@
+# MCP Server for AI agent access to Unreal Objects guardrails
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install the unreal_objects submodule (contains MCP server code)
+COPY unreal_objects/ ./unreal_objects/
+RUN pip install --no-cache-dir ./unreal_objects
+
+COPY entrypoint-mcp.sh ./entrypoint-mcp.sh
+RUN chmod +x entrypoint-mcp.sh
+
+EXPOSE 8000
+
+CMD ["./entrypoint-mcp.sh"]
