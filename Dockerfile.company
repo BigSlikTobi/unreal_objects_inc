@@ -1,0 +1,34 @@
+# Company API server + Dashboard (waste-management simulator)
+FROM python:3.13-slim
+
+# Install Node.js for dashboard build
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install unreal_objects submodule (needed for rule loading at startup)
+COPY unreal_objects/ ./unreal_objects/
+RUN pip install --no-cache-dir ./unreal_objects
+
+# Install company API and its packages
+COPY pyproject.toml ./
+COPY company_api/ ./company_api/
+COPY support_company/ ./support_company/
+COPY bot_adapter/ ./bot_adapter/
+COPY stress_runner/ ./stress_runner/
+COPY rule_packs/ ./rule_packs/
+RUN pip install --no-cache-dir .
+
+# Build dashboard (static files served by the company API)
+COPY dashboard/ ./dashboard/
+RUN cd dashboard && npm ci && npm run build
+
+COPY entrypoint-company.sh ./entrypoint-company.sh
+RUN chmod +x entrypoint-company.sh
+
+EXPOSE 8010
+
+CMD ["./entrypoint-company.sh"]

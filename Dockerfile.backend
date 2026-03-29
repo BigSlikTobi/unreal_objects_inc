@@ -1,0 +1,19 @@
+# Unreal Objects backend: Rule Engine (8001) + Decision Center (8002)
+FROM python:3.13-slim
+
+WORKDIR /app
+
+# Install the unreal_objects submodule
+COPY unreal_objects/ ./unreal_objects/
+RUN pip install --no-cache-dir ./unreal_objects
+
+# Copy rule pack so the company server can load it on startup
+COPY rule_packs/ ./rule_packs/
+
+# Startup script: launch Rule Engine + Decision Center, then wait
+COPY entrypoint-backend.sh ./entrypoint-backend.sh
+RUN chmod +x entrypoint-backend.sh
+
+EXPOSE 8001 8002
+
+CMD ["./entrypoint-backend.sh"]

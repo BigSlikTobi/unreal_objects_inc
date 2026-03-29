@@ -1,0 +1,33 @@
+# Railway deployment configuration
+# This project deploys as 3 services:
+#   1. backend   — Rule Engine + Decision Center (Unreal Objects)
+#   2. company   — Company API + Dashboard
+#   3. worker    — Autonomous bot worker
+#
+# Use Railway CLI or dashboard to create services pointing to this repo.
+# Each service should set its Dockerfile path and environment variables.
+#
+# Setup:
+#   railway link
+#   railway service create backend  --dockerfile Dockerfile.backend
+#   railway service create company  --dockerfile Dockerfile.company
+#   railway service create worker   --dockerfile Dockerfile.worker
+#
+# Environment variables per service:
+#
+# [backend]
+#   (no special env vars needed)
+#
+# [company]
+#   RULE_ENGINE_URL=http://backend.railway.internal:8001
+#   DECISION_CENTER_URL=http://backend.railway.internal:8002
+#   DEPLOYMENT_MODE=hosted
+#   GENERATOR_MODE=template
+#   ACCELERATION=10
+#   PORT=8010
+#
+# [worker]
+#   COMPANY_API_URL=http://company.railway.internal:8010
+#   DECISION_CENTER_URL=http://backend.railway.internal:8002
+#   BOT_ID=deborahbot3000
+#   POLL_INTERVAL=15

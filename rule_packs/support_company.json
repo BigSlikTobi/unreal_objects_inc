@@ -1,0 +1,155 @@
+{
+  "name": "Waste Company v1",
+  "description": "Lean guardrails for an autonomous waste-management company. Rules constrain chosen actions around waste type routing, overflow, extra capacity rental, and early emptying costs.",
+  "rules": [
+    {
+      "name": "Hazardous waste must stay in hazardous handling",
+      "feature": "waste_safety",
+      "active": true,
+      "datapoints": ["declared_waste_type", "target_waste_type", "bot_action"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF declared_waste_type == 'hazardous' AND bot_action == 'accept_and_route' AND target_waste_type != 'hazardous' THEN REJECT",
+      "rule_logic_json": {
+        "if": [
+          {
+            "and": [
+              {"==": [{"var": "declared_waste_type"}, "hazardous"]},
+              {"==": [{"var": "bot_action"}, "accept_and_route"]},
+              {"!=": [{"var": "target_waste_type"}, "hazardous"]}
+            ]
+          },
+          "REJECT",
+          null
+        ]
+      }
+    },
+    {
+      "name": "Large hazardous routing requires approval",
+      "feature": "waste_safety",
+      "active": true,
+      "datapoints": ["declared_waste_type", "quantity_m3", "bot_action"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF declared_waste_type == 'hazardous' AND quantity_m3 >= 6 AND bot_action != 'reject_order' THEN REJECT ELSE IF declared_waste_type == 'hazardous' AND bot_action != 'reject_order' THEN ASK_FOR_APPROVAL",
+      "rule_logic_json": {
+        "if": [
+          {
+            "and": [
+              {"==": [{"var": "declared_waste_type"}, "hazardous"]},
+              {">=": [{"var": "quantity_m3"}, 6]},
+              {"!=": [{"var": "bot_action"}, "reject_order"]}
+            ]
+          },
+          "REJECT",
+          {
+            "if": [
+              {
+                "and": [
+                  {"==": [{"var": "declared_waste_type"}, "hazardous"]},
+                  {"!=": [{"var": "bot_action"}, "reject_order"]}
+                ]
+              },
+              "ASK_FOR_APPROVAL",
+              null
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "Overflow-causing routes are rejected",
+      "feature": "capacity",
+      "active": true,
+      "datapoints": ["bot_action", "route_quantity_m3", "available_capacity_m3"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF bot_action == 'accept_and_route' AND route_quantity_m3 > available_capacity_m3 THEN REJECT",
+      "rule_logic_json": {
+        "if": [
+          {
+            "and": [
+              {"==": [{"var": "bot_action"}, "accept_and_route"]},
+              {">": [{"var": "route_quantity_m3"}, {"var": "available_capacity_m3"}]}
+            ]
+          },
+          "REJECT",
+          null
+        ]
+      }
+    },
+    {
+      "name": "Large extra rentals require approval",
+      "feature": "economics",
+      "active": true,
+      "datapoints": ["bot_action", "added_capacity_m3", "extra_rental_cost_eur"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF bot_action == 'rent_container' AND (added_capacity_m3 > 12 OR extra_rental_cost_eur > 500) THEN ASK_FOR_APPROVAL",
+      "rule_logic_json": {
+        "if": [
+          {
+            "and": [
+              {"==": [{"var": "bot_action"}, "rent_container"]},
+              {
+                "or": [
+                  {">": [{"var": "added_capacity_m3"}, 12]},
+                  {">": [{"var": "extra_rental_cost_eur"}, 500]}
+                ]
+              }
+            ]
+          },
+          "ASK_FOR_APPROVAL",
+          null
+        ]
+      }
+    },
+    {
+      "name": "Expensive early emptying requires approval",
+      "feature": "economics",
+      "active": true,
+      "datapoints": ["bot_action", "early_empty_cost_eur"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF bot_action == 'schedule_early_empty' AND early_empty_cost_eur > 150 THEN ASK_FOR_APPROVAL",
+      "rule_logic_json": {
+        "if": [
+          {
+            "and": [
+              {"==": [{"var": "bot_action"}, "schedule_early_empty"]},
+              {">": [{"var": "early_empty_cost_eur"}, 150]}
+            ]
+          },
+          "ASK_FOR_APPROVAL",
+          null
+        ]
+      }
+    },
+    {
+      "name": "Loss-making actions are blocked",
+      "feature": "economics",
+      "active": true,
+      "datapoints": ["offered_price_eur", "extra_rental_cost_eur", "early_empty_cost_eur"],
+      "edge_cases": [],
+      "edge_cases_json": [],
+      "rule_logic": "IF extra_rental_cost_eur + early_empty_cost_eur > offered_price_eur THEN REJECT",
+      "rule_logic_json": {
+        "if": [
+          {
+            ">": [
+              {
+                "+": [
+                  {"var": "extra_rental_cost_eur"},
+                  {"var": "early_empty_cost_eur"}
+                ]
+              },
+              {"var": "offered_price_eur"}
+            ]
+          },
+          "REJECT",
+          null
+        ]
+      }
+    }
+  ]
+}
