@@ -97,7 +97,7 @@ This means a fast bot can no longer produce implausible profit in a few virtual 
 
 ## Local Run
 
-For the full repeatable startup flow, including LAN bot setup and MCP enrollment, use [SETUP.md](/Users/tobiaslatta/Projects/github/bigsliktobi/unreal_objects_inc/SETUP.md).
+For the full repeatable startup flow, including LAN bot setup and MCP enrollment, use [docs/setup.md](/Users/tobiaslatta/Projects/github/bigsliktobi/unreal_objects_inc/docs/setup.md).
 
 Python 3.11+ and Node.js 18+ are required.
 

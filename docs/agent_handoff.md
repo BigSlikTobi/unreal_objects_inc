@@ -331,8 +331,8 @@ Good bot behavior means:
 
 You should also use:
 
-- `bot_manifest.md`
-- `company_manifest.md`
+- `docs/bot_manifest.md`
+- `docs/company_manifest.md`
 
 This handoff is the runtime contract.
 Those documents are the strategic and behavioral context.
