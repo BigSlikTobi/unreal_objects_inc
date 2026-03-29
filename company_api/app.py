@@ -203,7 +203,10 @@ def build_app(
         return OrdersResponse(orders=accepted, total=len(accepted))
 
     # Serve the dashboard static build if available
+    # Check both the source-relative path (local dev) and /app (Docker container)
     dashboard_dist = Path(__file__).resolve().parent.parent / "dashboard" / "dist"
+    if not dashboard_dist.is_dir():
+        dashboard_dist = Path("/app/dashboard/dist")
     if dashboard_dist.is_dir():
         app.mount("/assets", StaticFiles(directory=dashboard_dist / "assets"), name="dashboard-assets")
 
