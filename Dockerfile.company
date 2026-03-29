@@ -2,16 +2,15 @@
 FROM python:3.13-slim
 
 # Install Node.js for dashboard build
-RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+RUN apt-get update && apt-get install -y --no-install-recommends curl git && \
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y --no-install-recommends nodejs && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install unreal_objects submodule (needed for rule loading at startup)
-COPY unreal_objects/ ./unreal_objects/
-RUN pip install --no-cache-dir ./unreal_objects
+# Install unreal_objects directly from GitHub (submodule not available in Railway builds)
+RUN pip install --no-cache-dir git+https://github.com/BigSlikTobi/unreal_objects.git
 
 # Install company API and its packages
 COPY pyproject.toml ./

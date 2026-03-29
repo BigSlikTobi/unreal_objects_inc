@@ -1,11 +1,13 @@
 # MCP Server for AI agent access to Unreal Objects guardrails
 FROM python:3.13-slim
 
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Install the unreal_objects submodule (contains MCP server code)
-COPY unreal_objects/ ./unreal_objects/
-RUN pip install --no-cache-dir ./unreal_objects
+# Install unreal_objects directly from GitHub (submodule not available in Railway builds)
+RUN pip install --no-cache-dir git+https://github.com/BigSlikTobi/unreal_objects.git
 
 COPY entrypoint-mcp.sh ./entrypoint-mcp.sh
 RUN chmod +x entrypoint-mcp.sh
