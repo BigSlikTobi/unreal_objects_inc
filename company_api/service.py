@@ -674,7 +674,7 @@ class CompanySimulationService:
                 is_rented_extra=True,
             )
             self.containers[new_container.container_id] = new_container
-            setup_cost = min(160.0, round(rental * 0.35, 2))
+            setup_cost = min(120.0, round(rental * 0.25, 2))
             self._record_payable(
                 amount_eur=setup_cost,
                 created_at=now,

@@ -134,12 +134,12 @@ def generate_initial_containers(seed: int = 42, now: datetime | None = None) -> 
     rng = random.Random(seed)
     current = now or datetime.now(UTC)
     templates = [
-        ("Residual Bay", WasteType.RESIDUAL, 18.0, 130.0, 160.0, 24),
-        ("Recycling Line", WasteType.RECYCLING, 16.0, 120.0, 140.0, 24),
-        ("Paper Skip", WasteType.PAPER, 14.0, 85.0, 120.0, 36),
-        ("Glass Cage", WasteType.GLASS, 10.0, 95.0, 110.0, 48),
-        ("Organic Hopper", WasteType.ORGANIC, 12.0, 110.0, 135.0, 24),
-        ("Hazmat Unit", WasteType.HAZARDOUS, 8.0, 190.0, 220.0, 12),
+        ("Residual Bay", WasteType.RESIDUAL, 18.0, 105.0, 125.0, 24),
+        ("Recycling Line", WasteType.RECYCLING, 16.0, 95.0, 110.0, 24),
+        ("Paper Skip", WasteType.PAPER, 14.0, 70.0, 92.0, 36),
+        ("Glass Cage", WasteType.GLASS, 10.0, 78.0, 88.0, 48),
+        ("Organic Hopper", WasteType.ORGANIC, 12.0, 88.0, 105.0, 24),
+        ("Hazmat Unit", WasteType.HAZARDOUS, 8.0, 160.0, 180.0, 12),
     ]
     containers: list[WasteContainer] = []
     for label, waste_type, capacity, rental, early_empty, interval in templates:

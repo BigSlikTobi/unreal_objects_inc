@@ -213,8 +213,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Residual overflow exchange unit 8 m3",
         capacity_m3=8.0,
-        rental_cost_per_cycle_eur=180.0,
-        early_empty_cost_eur=160.0,
+        rental_cost_per_cycle_eur=145.0,
+        early_empty_cost_eur=125.0,
         turnaround_hours=24,
         notes="Owned-fleet overflow exchange benchmark for standard residual pickups.",
         derived_from_source="ZAC Celle mixed-waste 7-10 m3 container pricing",
@@ -225,8 +225,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Residual overflow exchange unit 14 m3",
         capacity_m3=14.0,
-        rental_cost_per_cycle_eur=260.0,
-        early_empty_cost_eur=210.0,
+        rental_cost_per_cycle_eur=210.0,
+        early_empty_cost_eur=165.0,
         turnaround_hours=24,
         notes="Larger exchange unit for high-pressure residual periods.",
         derived_from_source="Derived from mixed-waste container market rates and urgent transport overhead",
@@ -237,8 +237,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Recycling overflow exchange unit 8 m3",
         capacity_m3=8.0,
-        rental_cost_per_cycle_eur=160.0,
-        early_empty_cost_eur=140.0,
+        rental_cost_per_cycle_eur=125.0,
+        early_empty_cost_eur=110.0,
         turnaround_hours=24,
         notes="Overflow exchange option for mixed recycling capacity.",
         derived_from_source="Derived from mixed commercial-waste and recycling quotes",
@@ -249,8 +249,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Paper overflow exchange unit 7 m3",
         capacity_m3=7.0,
-        rental_cost_per_cycle_eur=120.0,
-        early_empty_cost_eur=120.0,
+        rental_cost_per_cycle_eur=95.0,
+        early_empty_cost_eur=95.0,
         turnaround_hours=36,
         notes="Low-cost paper exchange option for temporary overflow.",
         derived_from_source="Derived from ZAC Celle paper container pricing",
@@ -261,8 +261,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Glass overflow exchange unit 7 m3",
         capacity_m3=7.0,
-        rental_cost_per_cycle_eur=170.0,
-        early_empty_cost_eur=155.0,
+        rental_cost_per_cycle_eur=135.0,
+        early_empty_cost_eur=125.0,
         turnaround_hours=48,
         notes="Glass exchange option with higher hauling burden.",
         derived_from_source="Derived from Langezaal 7 m3 glass container pricing",
@@ -273,8 +273,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Organic overflow exchange unit 7 m3",
         capacity_m3=7.0,
-        rental_cost_per_cycle_eur=150.0,
-        early_empty_cost_eur=135.0,
+        rental_cost_per_cycle_eur=118.0,
+        early_empty_cost_eur=108.0,
         turnaround_hours=24,
         notes="Organic exchange option with tighter servicing cadence.",
         derived_from_source="Derived from ZAC Celle green-waste container pricing",
@@ -285,8 +285,8 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         bot_action="rent_container",
         label="Hazardous specialist exchange unit 6 m3",
         capacity_m3=6.0,
-        rental_cost_per_cycle_eur=260.0,
-        early_empty_cost_eur=220.0,
+        rental_cost_per_cycle_eur=220.0,
+        early_empty_cost_eur=185.0,
         turnaround_hours=12,
         notes="Specialist exchange option for hazardous overflow handling.",
         derived_from_source="Derived from Berlin hazardous small-quantity handling rates and specialist transport overhead",
@@ -296,7 +296,7 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         waste_type="all",
         bot_action="schedule_early_empty",
         label="Standard early empty slot",
-        early_empty_cost_eur=120.0,
+        early_empty_cost_eur=92.0,
         turnaround_hours=12,
         notes="Best-effort same-shift emptying.",
         derived_from_source="Derived from container transport and handling surcharges in public price lists",
@@ -306,7 +306,7 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         waste_type="all",
         bot_action="schedule_early_empty",
         label="Priority early empty slot",
-        early_empty_cost_eur=165.0,
+        early_empty_cost_eur=128.0,
         turnaround_hours=6,
         notes="Faster intervention with tighter dispatch priority.",
         derived_from_source="Derived from urgent transport markup against public container rates",
@@ -316,7 +316,7 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
         waste_type=WasteType.HAZARDOUS.value,
         bot_action="schedule_early_empty",
         label="Hazardous early empty slot",
-        early_empty_cost_eur=220.0,
+        early_empty_cost_eur=180.0,
         turnaround_hours=4,
         notes="Specialist call-out for hazardous capacity recovery.",
         derived_from_source="Derived from hazardous handling rates and specialist dispatch assumptions",
@@ -334,30 +334,30 @@ WASTE_DENSITY_KG_PER_M3 = {
 }
 
 QUOTE_MARGIN_MULTIPLIER = {
-    WasteType.RESIDUAL.value: 1.12,
-    WasteType.RECYCLING.value: 1.1,
-    WasteType.PAPER.value: 1.12,
-    WasteType.GLASS.value: 1.1,
-    WasteType.ORGANIC.value: 1.12,
-    WasteType.HAZARDOUS.value: 1.14,
+    WasteType.RESIDUAL.value: 1.14,
+    WasteType.RECYCLING.value: 1.12,
+    WasteType.PAPER.value: 1.2,
+    WasteType.GLASS.value: 1.12,
+    WasteType.ORGANIC.value: 1.18,
+    WasteType.HAZARDOUS.value: 1.16,
 }
 
 SERVICE_BASE_COST_EUR = {
-    WasteType.RESIDUAL.value: 58.0,
-    WasteType.RECYCLING.value: 40.0,
-    WasteType.PAPER.value: 24.0,
-    WasteType.GLASS.value: 48.0,
-    WasteType.ORGANIC.value: 42.0,
-    WasteType.HAZARDOUS.value: 110.0,
+    WasteType.RESIDUAL.value: 44.0,
+    WasteType.RECYCLING.value: 28.0,
+    WasteType.PAPER.value: 16.0,
+    WasteType.GLASS.value: 34.0,
+    WasteType.ORGANIC.value: 30.0,
+    WasteType.HAZARDOUS.value: 92.0,
 }
 
 SERVICE_COST_PER_M3_EUR = {
-    WasteType.RESIDUAL.value: 11.0,
-    WasteType.RECYCLING.value: 8.0,
-    WasteType.PAPER.value: 5.0,
-    WasteType.GLASS.value: 12.0,
-    WasteType.ORGANIC.value: 13.0,
-    WasteType.HAZARDOUS.value: 34.0,
+    WasteType.RESIDUAL.value: 8.0,
+    WasteType.RECYCLING.value: 5.5,
+    WasteType.PAPER.value: 3.25,
+    WasteType.GLASS.value: 8.5,
+    WasteType.ORGANIC.value: 8.5,
+    WasteType.HAZARDOUS.value: 26.0,
 }
 
 
@@ -429,17 +429,19 @@ def estimate_service_cost(
     variable = SERVICE_COST_PER_M3_EUR[waste_type.value] * quantity_m3
     subtotal = base + variable
 
+    # Keep urgent work meaningfully more expensive without letting dispatch
+    # overhead swamp the market-grounded quote catalog.
     if service_window == ServiceWindow.SAME_DAY:
-        subtotal *= 1.22
+        subtotal *= 1.14
     elif service_window == ServiceWindow.NEXT_DAY:
-        subtotal *= 1.05
+        subtotal *= 1.03
     else:
-        subtotal *= 0.94
+        subtotal *= 0.92
 
     if contamination_risk:
-        subtotal += 14.0
+        subtotal += 10.0
     if hazardous_flag:
-        subtotal += 35.0
+        subtotal += 28.0
 
     return round(subtotal, 2)
 
