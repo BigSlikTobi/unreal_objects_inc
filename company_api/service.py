@@ -91,6 +91,7 @@ class CompanySimulationService:
         public_voting_enabled: bool | None = None,
         operator_auth_enabled: bool | None = None,
         operator_token: str | None = None,
+        internal_api_key: str | None = None,
         persistence_path: str | Path | None = None,
         bot_connection_timeout_seconds: int = 120,
     ):
@@ -102,6 +103,7 @@ class CompanySimulationService:
         self.generator_mode = generator_mode
         self.rule_engine_url = rule_engine_url.rstrip("/")
         self.decision_center_url = decision_center_url.rstrip("/")
+        self.internal_api_key = internal_api_key
         self.rule_group_id = rule_group_id
         self.llm_model = llm_model
         self.llm_api_key = llm_api_key
@@ -946,10 +948,14 @@ class CompanySimulationService:
         )
 
     async def _submit_unreal_objects_approval(self, request_id: str, approved: bool, approver: str) -> None:
+        headers = {}
+        if self.internal_api_key:
+            headers["X-Internal-Key"] = self.internal_api_key
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
                 f"{self.decision_center_url}/v1/decide/{request_id}/approve",
                 json={"approved": approved, "approver": approver},
+                headers=headers,
             )
             response.raise_for_status()
 

@@ -17,4 +17,5 @@ exec uo-company-server \
     ${OPERATOR_AUTH:+--operator-auth} \
     ${OPERATOR_TOKEN:+--operator-token "$OPERATOR_TOKEN"} \
     ${PERSISTENCE_PATH:+--persistence-path "$PERSISTENCE_PATH"} \
-    ${RULE_GROUP_ID:+--rule-group-id "$RULE_GROUP_ID"}
+    ${RULE_GROUP_ID:+--rule-group-id "$RULE_GROUP_ID"} \
+    ${INTERNAL_API_KEY:+--internal-api-key "$INTERNAL_API_KEY"}

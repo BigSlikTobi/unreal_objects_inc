@@ -46,6 +46,7 @@ def build_app(
     public_voting_enabled: bool | None = None,
     operator_auth_enabled: bool | None = None,
     operator_token: str | None = None,
+    internal_api_key: str | None = None,
     persistence_path: str | Path | None = None,
 ) -> FastAPI:
     service = CompanySimulationService(
@@ -65,6 +66,7 @@ def build_app(
         public_voting_enabled=public_voting_enabled,
         operator_auth_enabled=operator_auth_enabled,
         operator_token=operator_token,
+        internal_api_key=internal_api_key,
         persistence_path=persistence_path,
     )
 

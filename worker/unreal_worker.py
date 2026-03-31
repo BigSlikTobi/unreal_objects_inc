@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 # ── Configuration (env-overridable for cloud deployment) ───────────
 COMPANY_BASE = os.environ.get("COMPANY_API_URL", "http://192.168.178.21:8010")
 DECISION_CENTER = os.environ.get("DECISION_CENTER_URL", "http://192.168.178.21:8002")
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "")
 BOT_ID = os.environ.get("BOT_ID", "deborahbot3000")
 POLL_INTERVAL = int(os.environ.get("POLL_INTERVAL", "5"))
 CONCURRENCY = int(os.environ.get("CONCURRENCY", "6"))
@@ -26,8 +27,10 @@ BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "10"))
 
 # ── HTTP helper ────────────────────────────────────────────────────
 
-def http_json(url, method="GET", data=None, timeout=20):
+def http_json(url, method="GET", data=None, timeout=20, extra_headers=None):
     headers = {"Content-Type": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
     body = None if data is None else json.dumps(data).encode()
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -79,7 +82,8 @@ def evaluate_action(description, context, group_id):
         "group_id": group_id,
         "user_id": BOT_ID,
     }
-    return http_json(f"{DECISION_CENTER}/v1/decide", method="POST", data=payload)
+    extra = {"X-Internal-Key": INTERNAL_API_KEY} if INTERNAL_API_KEY else None
+    return http_json(f"{DECISION_CENTER}/v1/decide", method="POST", data=payload, extra_headers=extra)
 
 
 # ── Decision logic ─────────────────────────────────────────────────
