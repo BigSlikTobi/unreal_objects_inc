@@ -1,60 +1,33 @@
 # Railway deployment configuration
 #
-# This project deploys as 5 services (+ 1 local agent):
+# This project deploys as a single service (+ 1 local agent):
 #
-#   CLOUD (Railway)
-#   ───────────────
-#   1. rule-engine       — Rule Engine (public + internal)
-#   2. decision-center   — Decision Center (public + internal)
-#   3. company           — Company API + Dashboard (public)
-#   4. mcp               — MCP Server (public)
-#   5. ui                — Unreal Objects admin UI (public)
+#   CLOUD (Railway — athletic-spirit project)
+#   ─────────────────────────────────────────
+#   1. company  — Company API + Dashboard (public, Dockerfile.company)
+#
+#   EXTERNAL (Railway — unreal_objects project, deployed separately)
+#   ────────────────────────────────────────────────────────────────
+#   Rule Engine, Decision Center, MCP, UI — managed in the unreal_objects repo
 #
 #   LOCAL (Raspberry Pi / dev machine)
 #   ──────────────────────────────────
-#   6. worker            — Autonomous bot agent (worker/unreal_worker.py)
-#
-# Each service uses its own Dockerfile:
-#   rule-engine      → Dockerfile.rule-engine
-#   decision-center  → Dockerfile.decision-center
-#   company          → Dockerfile.company
-#   mcp              → Dockerfile.mcp
-#   ui               → Dockerfile.ui
+#   worker  — Autonomous bot agent (worker/unreal_worker.py)
 #
 # ── Environment Variables ────────────────────────────────────────
-#
-# [rule-engine]
-#   INTERNAL_API_KEY=<secret>
-#   ENVIRONMENT=production
-#
-# [decision-center]
-#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
-#   INTERNAL_API_KEY=<same-secret>
-#   ENVIRONMENT=production
 #
 # [company]
 #   DEPLOYMENT_MODE=hosted
 #   GENERATOR_MODE=template
 #   ACCELERATION=10
-#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
-#   DECISION_CENTER_URL=http://decision-center.railway.internal:<port>
-#   INTERNAL_API_KEY=<same-secret>
+#   RULE_ENGINE_URL=https://ruleengine-production-d6fe.up.railway.app
+#   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
+#   INTERNAL_API_KEY=<shared-secret matching unreal_objects project>
 #   ENVIRONMENT=production
-#
-# [mcp]
-#   RULE_ENGINE_URL=http://rule-engine.railway.internal:<port>
-#   DECISION_CENTER_URL=http://decision-center.railway.internal:<port>
-#   INTERNAL_API_KEY=<same-secret>
-#   MCP_ADMIN_API_KEY=<generated>
-#   ENVIRONMENT=production
-#
-# [ui]  (build-time variables)
-#   VITE_RULE_ENGINE_BASE_URL=https://rule-engine-XXX.up.railway.app
-#   VITE_DECISION_CENTER_BASE_URL=https://decision-center-XXX.up.railway.app
 #
 # [local worker — NOT on Railway]
-#   COMPANY_API_URL=https://company-XXX.up.railway.app
-#   DECISION_CENTER_URL=https://decision-center-XXX.up.railway.app
+#   COMPANY_API_URL=https://unrealobjectsinc-production.up.railway.app
+#   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
 #   BOT_ID=deborahbot3000
 #   POLL_INTERVAL=5
 #
