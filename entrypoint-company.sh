@@ -16,4 +16,5 @@ exec uo-company-server \
     ${PUBLIC_VOTING:+--public-voting} \
     ${OPERATOR_AUTH:+--operator-auth} \
     ${OPERATOR_TOKEN:+--operator-token "$OPERATOR_TOKEN"} \
-    ${PERSISTENCE_PATH:+--persistence-path "$PERSISTENCE_PATH"}
+    ${PERSISTENCE_PATH:+--persistence-path "$PERSISTENCE_PATH"} \
+    ${RULE_GROUP_ID:+--rule-group-id "$RULE_GROUP_ID"}
