@@ -49,6 +49,10 @@ export interface DisposalOrderDTO {
   contamination_risk: boolean;
   status: string;
   assigned_to: string | null;
+  baseline_economics: BaselineEconomicsDTO | null;
+  projected_action_economics: ProjectedActionEconomicsDTO | null;
+  action_inputs: Record<string, unknown>;
+  guardrail_context_base: Record<string, unknown>;
   bot_action: string | null;
   action_payload: Record<string, unknown>;
   resolution: string | null;
@@ -80,6 +84,10 @@ export interface BotInboxOrderDTO {
   site_id: string | null;
   status: string;
   assigned_to: string | null;
+  baseline_economics: BaselineEconomicsDTO | null;
+  projected_action_economics: ProjectedActionEconomicsDTO | null;
+  action_inputs: Record<string, unknown>;
+  guardrail_context_base: Record<string, unknown>;
 }
 
 export interface BotOrdersResponse {
@@ -120,10 +128,44 @@ export interface EconomicsSnapshot {
   accounts_payable_eur: number;
   cash_balance_eur: number;
   daily_burn_eur: number;
+  bankruptcy_threshold_eur: number;
+  runway_days: number;
+  net_working_capital_eur: number;
+  approval_locked_order_count: number;
+  approval_locked_revenue_eur: number;
   profit_eur: number;
   overflow_count: number;
   bankruptcy_count: number;
   current_run_id: number;
+}
+
+export interface BaselineEconomicsDTO {
+  customer_price_eur: number;
+  baseline_service_cost_eur: number;
+  baseline_total_cost_eur: number;
+  baseline_margin_eur: number;
+  baseline_margin_pct: number;
+  baseline_receivable_delay_hours: number;
+  baseline_payable_delay_hours: number;
+  baseline_cash_gap_hours: number;
+}
+
+export interface ProjectedActionEconomicsDTO {
+  projected_service_cost_eur: number;
+  projected_action_cost_eur: number;
+  projected_total_cost_eur: number;
+  projected_margin_eur: number;
+  projected_margin_pct: number;
+  projected_receivable_delay_hours: number;
+  projected_payable_delay_hours: number;
+  projected_cash_gap_hours: number;
+  projected_net_working_capital_eur: number;
+  current_cash_balance_eur: number;
+  current_accounts_receivable_eur: number;
+  current_accounts_payable_eur: number;
+  current_net_working_capital_eur: number;
+  bankruptcy_threshold_eur: number;
+  cost_policy_version: string;
 }
 
 export interface MarketPriceOptionDTO {
@@ -159,6 +201,7 @@ export interface PricingCatalogResponse {
   currency: string;
   market_quotes: MarketPriceOptionDTO[];
   operational_options: OperationalPriceOptionDTO[];
+  policy: Record<string, unknown>;
 }
 
 export interface ApprovalVoteSummary {
@@ -180,6 +223,8 @@ export interface ApprovalItemDTO {
   title: string;
   customer_request: string;
   bot_action: string;
+  baseline_economics: BaselineEconomicsDTO | null;
+  projected_action_economics: ProjectedActionEconomicsDTO | null;
   decision_summary: string | null;
   matched_rules: string[];
   created_at: string;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { DisposalOrderDTO } from '../types';
+import { OrderEconomicsPanel } from './OrderEconomicsPanel';
 
 interface Props {
   c: DisposalOrderDTO;
@@ -92,6 +93,11 @@ export function CaseCard({ c }: Props) {
           <div className="feed-card-footer-left">
             <span className="feed-card-footer-item">{timeAgo(c.created_at)}</span>
             <span className="feed-card-footer-item">{money(c.offered_price_eur)}</span>
+            {c.baseline_economics && (
+              <span className={`feed-card-footer-item ${c.baseline_economics.baseline_margin_eur >= 0 ? 'text-[var(--tertiary)]' : 'text-[var(--error)]'}`}>
+                margin {money(c.baseline_economics.baseline_margin_eur)}
+              </span>
+            )}
             <span className="feed-card-footer-item">{c.service_window.replace('_', ' ')}</span>
             {c.assigned_to && <span className="feed-card-footer-item">{c.assigned_to}</span>}
           </div>
@@ -115,6 +121,7 @@ export function CaseCard({ c }: Props) {
                 <span className="metric-label">Priority: <strong className="metric-value">{c.priority}</strong></span>
                 {c.bot_action && <span className="metric-label">Bot Action: <strong className="metric-value">{c.bot_action}</strong></span>}
               </div>
+              <OrderEconomicsPanel baseline={c.baseline_economics} projected={c.projected_action_economics} />
               {c.decision_summary && (
                 <div className="console-inset px-3 py-3 text-[var(--text-secondary)]">
                   <p className="section-label !mb-1">Bot Decision</p>

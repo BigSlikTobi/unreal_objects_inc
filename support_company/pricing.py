@@ -6,6 +6,14 @@ from dataclasses import dataclass, asdict
 
 import random
 
+from .cost_policy import (
+    CostPolicy,
+    WASTE_DENSITY_KG_PER_M3,
+    estimate_payment_delay_hours as estimate_payment_delay_hours_from_policy,
+    estimate_service_cost as estimate_service_cost_from_policy,
+    estimate_vendor_payment_delay_hours as estimate_vendor_payment_delay_hours_from_policy,
+    load_cost_policy,
+)
 from .models import ServiceWindow, WasteType
 
 
@@ -324,43 +332,6 @@ OPERATIONAL_PRICE_OPTIONS: tuple[OperationalPriceOption, ...] = (
 )
 
 
-WASTE_DENSITY_KG_PER_M3 = {
-    WasteType.RESIDUAL.value: 140.0,
-    WasteType.RECYCLING.value: 95.0,
-    WasteType.PAPER.value: 60.0,
-    WasteType.GLASS.value: 380.0,
-    WasteType.ORGANIC.value: 320.0,
-    WasteType.HAZARDOUS.value: 40.0,
-}
-
-QUOTE_MARGIN_MULTIPLIER = {
-    WasteType.RESIDUAL.value: 1.14,
-    WasteType.RECYCLING.value: 1.12,
-    WasteType.PAPER.value: 1.2,
-    WasteType.GLASS.value: 1.12,
-    WasteType.ORGANIC.value: 1.18,
-    WasteType.HAZARDOUS.value: 1.16,
-}
-
-SERVICE_BASE_COST_EUR = {
-    WasteType.RESIDUAL.value: 44.0,
-    WasteType.RECYCLING.value: 28.0,
-    WasteType.PAPER.value: 16.0,
-    WasteType.GLASS.value: 34.0,
-    WasteType.ORGANIC.value: 30.0,
-    WasteType.HAZARDOUS.value: 92.0,
-}
-
-SERVICE_COST_PER_M3_EUR = {
-    WasteType.RESIDUAL.value: 8.0,
-    WasteType.RECYCLING.value: 5.5,
-    WasteType.PAPER.value: 3.25,
-    WasteType.GLASS.value: 8.5,
-    WasteType.ORGANIC.value: 8.5,
-    WasteType.HAZARDOUS.value: 26.0,
-}
-
-
 def list_market_price_options(waste_type: str | None = None) -> list[dict]:
     options = [asdict(option) for option in MARKET_PRICE_OPTIONS]
     if waste_type is None:
@@ -383,7 +354,9 @@ def estimate_customer_quote(
     contamination_risk: bool = False,
     hazardous_flag: bool = False,
     rng: random.Random,
+    policy: CostPolicy | None = None,
 ) -> float:
+    active_policy = policy or load_cost_policy()
     matches = [option for option in MARKET_PRICE_OPTIONS if option.waste_type == waste_type.value]
     if not matches:
         return round(quantity_m3 * 50.0, 2)
@@ -399,10 +372,7 @@ def estimate_customer_quote(
     else:
         price = chosen.base_price_eur
 
-    if service_window == ServiceWindow.SAME_DAY:
-        price *= 1.18
-    elif service_window == ServiceWindow.NEXT_DAY:
-        price *= 1.05
+    price *= active_policy.service_window_price_multiplier[service_window.value]
 
     projected_cost = estimate_service_cost(
         waste_type=waste_type,
@@ -410,8 +380,11 @@ def estimate_customer_quote(
         service_window=service_window,
         contamination_risk=contamination_risk,
         hazardous_flag=hazardous_flag,
+        policy=active_policy,
     )
-    minimum_viable_quote = (projected_cost * QUOTE_MARGIN_MULTIPLIER[waste_type.value]) + 8.0
+    minimum_viable_quote = (
+        projected_cost * active_policy.quote_margin_multiplier[waste_type.value]
+    ) + active_policy.quote_floor_surcharge_eur
     price = max(price, minimum_viable_quote)
 
     return round(price, 2)
@@ -424,41 +397,29 @@ def estimate_service_cost(
     service_window: ServiceWindow,
     contamination_risk: bool,
     hazardous_flag: bool,
+    policy: CostPolicy | None = None,
 ) -> float:
-    base = SERVICE_BASE_COST_EUR[waste_type.value]
-    variable = SERVICE_COST_PER_M3_EUR[waste_type.value] * quantity_m3
-    subtotal = base + variable
-
-    # Keep urgent work meaningfully more expensive without letting dispatch
-    # overhead swamp the market-grounded quote catalog.
-    if service_window == ServiceWindow.SAME_DAY:
-        subtotal *= 1.14
-    elif service_window == ServiceWindow.NEXT_DAY:
-        subtotal *= 1.03
-    else:
-        subtotal *= 0.92
-
-    if contamination_risk:
-        subtotal += 10.0
-    if hazardous_flag:
-        subtotal += 28.0
-
-    return round(subtotal, 2)
+    return estimate_service_cost_from_policy(
+        policy=policy or load_cost_policy(),
+        waste_type=waste_type,
+        quantity_m3=quantity_m3,
+        service_window=service_window,
+        contamination_risk=contamination_risk,
+        hazardous_flag=hazardous_flag,
+    )
 
 
-def estimate_payment_delay_hours(service_window: ServiceWindow) -> int:
-    if service_window == ServiceWindow.SAME_DAY:
-        return 48
-    if service_window == ServiceWindow.NEXT_DAY:
-        return 72
-    return 96
+def estimate_payment_delay_hours(service_window: ServiceWindow, policy: CostPolicy | None = None) -> int:
+    return estimate_payment_delay_hours_from_policy(policy=policy or load_cost_policy(), service_window=service_window)
 
 
-def estimate_vendor_payment_delay_hours(service_window: ServiceWindow, hazardous_flag: bool) -> int:
-    if hazardous_flag:
-        return 12
-    if service_window == ServiceWindow.SAME_DAY:
-        return 12
-    if service_window == ServiceWindow.NEXT_DAY:
-        return 24
-    return 36
+def estimate_vendor_payment_delay_hours(
+    service_window: ServiceWindow,
+    hazardous_flag: bool,
+    policy: CostPolicy | None = None,
+) -> int:
+    return estimate_vendor_payment_delay_hours_from_policy(
+        policy=policy or load_cost_policy(),
+        service_window=service_window,
+        hazardous_flag=hazardous_flag,
+    )

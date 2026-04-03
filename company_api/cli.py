@@ -29,6 +29,7 @@ DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "sup
 @click.option("--operator-token", default=None, help="Shared operator token used for protected approval finalization.")
 @click.option("--internal-api-key", default=None, help="Shared internal API key sent as X-Internal-Key to Unreal Objects services.")
 @click.option("--persistence-path", default=None, type=click.Path(), help="Optional JSON snapshot path for persisted hosted state.")
+@click.option("--cost-policy", default=None, type=click.Path(exists=True), help="Optional JSON file with cost policy overrides.")
 @click.option(
     "--generator-mode",
     type=click.Choice(["mixed", "llm", "template"], case_sensitive=False),
@@ -63,6 +64,7 @@ def main(
     operator_token: str | None,
     internal_api_key: str | None,
     persistence_path: str | None,
+    cost_policy: str | None,
     generator_mode: str,
     llm_model: str,
     allow_template_fallback: bool,
@@ -88,6 +90,7 @@ def main(
         operator_token=operator_token,
         internal_api_key=internal_api_key,
         persistence_path=persistence_path,
+        cost_policy_path=cost_policy,
         llm_model=llm_model,
         allow_template_fallback=allow_template_fallback,
     )
