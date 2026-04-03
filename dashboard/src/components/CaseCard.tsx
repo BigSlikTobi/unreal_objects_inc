@@ -107,6 +107,8 @@ export function CaseCard({ c }: Props) {
           </div>
         </div>
 
+        <OrderEconomicsPanel baseline={c.baseline_economics} projected={c.projected_action_economics} compact />
+
         {expanded && (
           <div className="mt-4 text-xs">
             <div className="feed-detail-block space-y-3">
