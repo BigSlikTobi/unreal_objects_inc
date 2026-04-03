@@ -59,6 +59,35 @@ class ClockInfo(BaseModel):
     day_of_week: str
 
 
+class BaselineEconomicsDTO(BaseModel):
+    customer_price_eur: float
+    baseline_service_cost_eur: float
+    baseline_total_cost_eur: float
+    baseline_margin_eur: float
+    baseline_margin_pct: float
+    baseline_receivable_delay_hours: int
+    baseline_payable_delay_hours: int
+    baseline_cash_gap_hours: int
+
+
+class ProjectedActionEconomicsDTO(BaseModel):
+    projected_service_cost_eur: float
+    projected_action_cost_eur: float
+    projected_total_cost_eur: float
+    projected_margin_eur: float
+    projected_margin_pct: float
+    projected_receivable_delay_hours: int
+    projected_payable_delay_hours: int
+    projected_cash_gap_hours: int
+    projected_net_working_capital_eur: float
+    current_cash_balance_eur: float
+    current_accounts_receivable_eur: float
+    current_accounts_payable_eur: float
+    current_net_working_capital_eur: float
+    bankruptcy_threshold_eur: float
+    cost_policy_version: str
+
+
 class DisposalOrderDTO(BaseModel):
     order_id: str
     title: str
@@ -75,6 +104,10 @@ class DisposalOrderDTO(BaseModel):
     contamination_risk: bool
     status: str
     assigned_to: str | None = None
+    baseline_economics: BaselineEconomicsDTO | None = None
+    projected_action_economics: ProjectedActionEconomicsDTO | None = None
+    action_inputs: dict[str, object] = Field(default_factory=dict)
+    guardrail_context_base: dict[str, object] = Field(default_factory=dict)
     bot_action: str | None = None
     action_payload: dict = Field(default_factory=dict)
     resolution: str | None = None
@@ -101,6 +134,10 @@ class BotInboxOrderDTO(BaseModel):
     site_id: str | None = None
     status: str
     assigned_to: str | None = None
+    baseline_economics: BaselineEconomicsDTO | None = None
+    projected_action_economics: ProjectedActionEconomicsDTO | None = None
+    action_inputs: dict[str, object] = Field(default_factory=dict)
+    guardrail_context_base: dict[str, object] = Field(default_factory=dict)
 
 
 class OrdersResponse(BaseModel):
@@ -146,6 +183,11 @@ class EconomicsSnapshot(BaseModel):
     accounts_payable_eur: float
     cash_balance_eur: float
     daily_burn_eur: float
+    bankruptcy_threshold_eur: float
+    runway_days: float
+    net_working_capital_eur: float
+    approval_locked_order_count: int
+    approval_locked_revenue_eur: float
     profit_eur: float
     overflow_count: int
     bankruptcy_count: int
@@ -247,6 +289,7 @@ class PricingCatalogResponse(BaseModel):
     currency: str
     market_quotes: list[MarketPriceOptionDTO]
     operational_options: list[OperationalPriceOptionDTO]
+    policy: dict[str, object]
 
 
 class ApprovalVoteSummary(BaseModel):
@@ -268,6 +311,8 @@ class ApprovalItemDTO(BaseModel):
     title: str
     customer_request: str
     bot_action: str
+    baseline_economics: BaselineEconomicsDTO | None = None
+    projected_action_economics: ProjectedActionEconomicsDTO | None = None
     decision_summary: str | None = None
     matched_rules: list[str] = Field(default_factory=list)
     created_at: str
@@ -306,6 +351,7 @@ class OrderClaimResponse(BaseModel):
     order_id: str
     status: str
     assigned_to: str
+    order: BotInboxOrderDTO
 
 
 class OrderResultSubmission(BaseModel):

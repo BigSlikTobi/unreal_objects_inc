@@ -11,6 +11,17 @@ from pathlib import Path
 
 import httpx
 
+from support_company.cost_policy import (
+    DEFAULT_BANKRUPTCY_BURN_MULTIPLE as COST_POLICY_DEFAULT_BANKRUPTCY_BURN_MULTIPLE,
+    DEFAULT_DAILY_OVERHEAD_EUR as COST_POLICY_DEFAULT_DAILY_OVERHEAD_EUR,
+    BaselineOrderEconomics,
+    CostPolicy,
+    ProjectedEconomics,
+    bankruptcy_threshold_eur,
+    load_cost_policy,
+    project_action_economics,
+    project_order_economics,
+)
 from support_company.generator import generate_initial_containers
 from support_company.models import CompanyEvent, DisposalOrder, GeneratedScenario, WasteContainer, WasteType
 from support_company.pricing import (
@@ -27,6 +38,7 @@ from .models import (
     ApprovalFinalizeResponse,
     ApprovalItemDTO,
     ApprovalVoteState,
+    BaselineEconomicsDTO,
     BotDecisionOutcome,
     BotInboxOrderDTO,
     CompanyStats,
@@ -42,6 +54,7 @@ from .models import (
     OrderStatus,
     OperationalPriceOptionDTO,
     PayableEntry,
+    ProjectedActionEconomicsDTO,
     ReceivableEntry,
     PricingCatalogResponse,
     RuleDTO,
@@ -50,14 +63,12 @@ from .models import (
     WasteEventDTO,
 )
 
-
-OVERFLOW_PENALTY_EUR = 350.0
 CONTINUOUS_BOOTSTRAP_ORDERS = 2
-DEFAULT_STARTING_CASH_EUR = 70_000.0
-DEFAULT_DAILY_OVERHEAD_EUR = 750.0
-DEFAULT_BANKRUPTCY_BURN_MULTIPLE = 20.0
 DEFAULT_ACCELERATION = 24
 DEFAULT_TARGET_ORDERS_PER_SIM_DAY = 1_000
+DEFAULT_BANKRUPTCY_BURN_MULTIPLE = COST_POLICY_DEFAULT_BANKRUPTCY_BURN_MULTIPLE
+DEFAULT_DAILY_OVERHEAD_EUR = COST_POLICY_DEFAULT_DAILY_OVERHEAD_EUR
+OVERFLOW_PENALTY_EUR = 350.0
 
 
 def utcnow() -> datetime:
@@ -94,6 +105,7 @@ class CompanySimulationService:
         internal_api_key: str | None = None,
         persistence_path: str | Path | None = None,
         bot_connection_timeout_seconds: int = 120,
+        cost_policy_path: str | Path | None = None,
     ):
         self.rule_pack_path = Path(rule_pack_path)
         self.initial_order_count = initial_order_count
@@ -115,6 +127,7 @@ class CompanySimulationService:
         self.persistence_path = Path(persistence_path) if persistence_path else None
         self.persistence_backend = "json" if self.persistence_path else "memory"
         self.bot_connection_timeout_seconds = bot_connection_timeout_seconds
+        self.cost_policy: CostPolicy = load_cost_policy(cost_policy_path)
         self.continuous_mode = initial_order_count is None
         self.bounded_rolling_mode = rolling_generation and initial_order_count is not None and initial_order_count > 0
 
@@ -145,7 +158,7 @@ class CompanySimulationService:
         self.overhead_cost_eur = 0.0
         self.penalty_cost_eur = 0.0
         self.early_empty_cost_eur = 0.0
-        self.cash_balance_eur = DEFAULT_STARTING_CASH_EUR
+        self.cash_balance_eur = self.cost_policy.starting_cash_eur
         self.accounts_receivable_eur = 0.0
         self.accounts_payable_eur = 0.0
         self.receivables: list[ReceivableEntry] = []
@@ -251,6 +264,144 @@ class CompanySimulationService:
                 self.source_events[order.order_id] = event
         return dto
 
+    def _current_financial_context(self) -> dict[str, object]:
+        return {
+            "current_cash_balance_eur": round(self.cash_balance_eur, 2),
+            "current_accounts_receivable_eur": round(self.accounts_receivable_eur, 2),
+            "current_accounts_payable_eur": round(self.accounts_payable_eur, 2),
+            "current_net_working_capital_eur": round(self._net_working_capital_eur(), 2),
+            "bankruptcy_threshold_eur": round(self._bankruptcy_threshold_eur(), 2),
+            "cost_policy_version": self.cost_policy.version,
+        }
+
+    def _build_baseline_order_economics(self, order: DisposalOrder) -> BaselineOrderEconomics:
+        return project_order_economics(
+            policy=self.cost_policy,
+            offered_price_eur=order.offered_price_eur,
+            waste_type=order.declared_waste_type,
+            quantity_m3=order.quantity_m3,
+            service_window=order.service_window,
+            contamination_risk=order.contamination_risk,
+            hazardous_flag=order.hazardous_flag,
+        )
+
+    def _build_projected_action_economics(
+        self,
+        order: DisposalOrder,
+        *,
+        bot_action: str,
+        action_payload: dict,
+    ) -> ProjectedEconomics:
+        return project_action_economics(
+            policy=self.cost_policy,
+            offered_price_eur=order.offered_price_eur,
+            waste_type=order.declared_waste_type,
+            quantity_m3=order.quantity_m3,
+            service_window=order.service_window,
+            contamination_risk=order.contamination_risk,
+            hazardous_flag=order.hazardous_flag,
+            bot_action=bot_action,
+            action_payload=action_payload,
+            current_cash_balance_eur=self.cash_balance_eur,
+            accounts_receivable_eur=self.accounts_receivable_eur,
+            accounts_payable_eur=self.accounts_payable_eur,
+        )
+
+    def _build_action_inputs(self, order: DisposalOrder) -> dict[str, object]:
+        matching_containers = [
+            container
+            for container in self.containers.values()
+            if container.waste_type == order.declared_waste_type
+        ]
+        route_options = sorted(
+            [
+                {
+                    "target_container_id": container.container_id,
+                    "label": container.label,
+                    "target_waste_type": container.waste_type.value,
+                    "available_capacity_m3": round(max(container.capacity_m3 - container.fill_level_m3, 0.0), 2),
+                    "route_quantity_m3": order.quantity_m3,
+                }
+                for container in matching_containers
+            ],
+            key=lambda option: option["available_capacity_m3"],
+            reverse=True,
+        )
+        early_empty_options = sorted(
+            [
+                {
+                    "target_container_id": container.container_id,
+                    "label": container.label,
+                    "target_waste_type": container.waste_type.value,
+                    "available_capacity_m3": round(max(container.capacity_m3 - container.fill_level_m3, 0.0), 2),
+                    "recovered_capacity_m3": round(container.capacity_m3, 2),
+                    "route_quantity_m3": order.quantity_m3,
+                    "early_empty_cost_eur": round(container.early_empty_cost_eur, 2),
+                    "emptying_interval_hours": container.emptying_interval_hours,
+                }
+                for container in matching_containers
+            ],
+            key=lambda option: option["early_empty_cost_eur"],
+        )
+        rental_options = []
+        for option in list_operational_price_options(waste_type=order.declared_waste_type.value):
+            if option["bot_action"] != "rent_container":
+                continue
+            rental_options.append(
+                {
+                    "option_id": option["option_id"],
+                    "label": option["label"],
+                    "target_waste_type": order.declared_waste_type.value,
+                    "added_capacity_m3": option["capacity_m3"],
+                    "extra_rental_cost_eur": option["rental_cost_per_cycle_eur"],
+                    "early_empty_cost_eur": option["early_empty_cost_eur"],
+                    "emptying_interval_hours": option["turnaround_hours"],
+                    "route_quantity_m3": order.quantity_m3,
+                }
+            )
+        return {
+            "accept_and_route": {"options": route_options},
+            "rent_container": {"options": rental_options},
+            "schedule_early_empty": {"options": early_empty_options},
+            "reject_order": {"reason_required": True},
+        }
+
+    def _hydrate_disposal_order_dto(self, record: OrderRecord) -> DisposalOrderDTO:
+        dto = record.dto.model_copy(deep=True)
+        order = self.source_orders.get(dto.order_id)
+        if order is None:
+            return dto
+        baseline = self._build_baseline_order_economics(order)
+        dto.baseline_economics = BaselineEconomicsDTO.model_validate(baseline.as_guardrail_context())
+        dto.action_inputs = self._build_action_inputs(order)
+        dto.guardrail_context_base = order.to_evaluation_context(
+            baseline_economics=baseline.as_guardrail_context(),
+            financial_context=self._current_financial_context(),
+        )
+        return dto
+
+    def _to_bot_inbox_order(self, record: OrderRecord) -> BotInboxOrderDTO:
+        dto = self._hydrate_disposal_order_dto(record)
+        return BotInboxOrderDTO(
+            order_id=dto.order_id,
+            title=dto.title,
+            customer_request=dto.customer_request,
+            declared_waste_type=dto.declared_waste_type,
+            quantity_m3=dto.quantity_m3,
+            offered_price_eur=dto.offered_price_eur,
+            priority=dto.priority,
+            service_window=dto.service_window,
+            created_at=dto.created_at,
+            customer_id=dto.customer_id,
+            site_id=dto.site_id,
+            status=dto.status,
+            assigned_to=dto.assigned_to,
+            baseline_economics=dto.baseline_economics,
+            projected_action_economics=dto.projected_action_economics,
+            action_inputs=dto.action_inputs,
+            guardrail_context_base=dto.guardrail_context_base,
+        )
+
     async def claim_order(self, order_id: str, bot_id: str) -> OrderClaimResponse:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
@@ -262,7 +413,12 @@ class CompanySimulationService:
             record.dto.status = OrderStatus.CLAIMED.value
             record.dto.assigned_to = bot_id
             self._mark_bot_seen(bot_id)
-            response = OrderClaimResponse(order_id=order_id, status=record.dto.status, assigned_to=bot_id)
+            response = OrderClaimResponse(
+                order_id=order_id,
+                status=record.dto.status,
+                assigned_to=bot_id,
+                order=self._to_bot_inbox_order(record),
+            )
         await self._persist_state()
         return response
 
@@ -296,6 +452,9 @@ class CompanySimulationService:
             record.dto.decision_summary = decision_summary
             record.dto.bot_action = bot_action
             record.dto.action_payload = payload
+            record.dto.projected_action_economics = ProjectedActionEconomicsDTO.model_validate(
+                self._build_projected_action_economics(order, bot_action=bot_action, action_payload=payload).as_guardrail_context()
+            )
             self._mark_bot_seen(bot_id)
 
             if outcome == BotDecisionOutcome.APPROVAL_REQUIRED:
@@ -369,7 +528,7 @@ class CompanySimulationService:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
             return [
-                record.dto.model_copy(deep=True)
+                self._hydrate_disposal_order_dto(record)
                 for record in sorted(self.records.values(), key=lambda record: record.sort_created_at, reverse=True)
             ]
 
@@ -377,21 +536,7 @@ class CompanySimulationService:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
             return [
-                BotInboxOrderDTO(
-                    order_id=record.dto.order_id,
-                    title=record.dto.title,
-                    customer_request=record.dto.customer_request,
-                    declared_waste_type=record.dto.declared_waste_type,
-                    quantity_m3=record.dto.quantity_m3,
-                    offered_price_eur=record.dto.offered_price_eur,
-                    priority=record.dto.priority,
-                    service_window=record.dto.service_window,
-                    created_at=record.dto.created_at,
-                    customer_id=record.dto.customer_id,
-                    site_id=record.dto.site_id,
-                    status=record.dto.status,
-                    assigned_to=record.dto.assigned_to,
-                )
+                self._to_bot_inbox_order(record)
                 for record in sorted(self.records.values(), key=lambda record: record.sort_created_at, reverse=True)
             ]
 
@@ -417,6 +562,11 @@ class CompanySimulationService:
                 accounts_payable_eur=round(self.accounts_payable_eur, 2),
                 cash_balance_eur=round(self.cash_balance_eur, 2),
                 daily_burn_eur=round(self._daily_burn_eur(), 2),
+                bankruptcy_threshold_eur=round(self._bankruptcy_threshold_eur(), 2),
+                runway_days=round(self._runway_days(), 2),
+                net_working_capital_eur=round(self._net_working_capital_eur(), 2),
+                approval_locked_order_count=self._approval_locked_order_count(),
+                approval_locked_revenue_eur=round(self._approval_locked_revenue_eur(), 2),
                 profit_eur=round(self._profit(), 2),
                 overflow_count=self.overflow_count,
                 bankruptcy_count=self.bankruptcy_count,
@@ -435,6 +585,7 @@ class CompanySimulationService:
                 OperationalPriceOptionDTO.model_validate(option)
                 for option in list_operational_price_options(waste_type=waste_type)
             ],
+            policy=self.cost_policy.to_public_dict(),
         )
 
     async def get_events(self) -> EventsResponse:
@@ -582,6 +733,7 @@ class CompanySimulationService:
                 allow_template_fallback=self.allow_template_fallback,
                 model=self.llm_model,
                 api_key=self.llm_api_key,
+                cost_policy=self.cost_policy,
             )
         )
         self._order_seed_offset += count
@@ -633,7 +785,7 @@ class CompanySimulationService:
             self.overhead_cost_eur = 0.0
             self.penalty_cost_eur = 0.0
             self.early_empty_cost_eur = 0.0
-            self.cash_balance_eur = DEFAULT_STARTING_CASH_EUR
+            self.cash_balance_eur = self.cost_policy.starting_cash_eur
             self.accounts_receivable_eur = 0.0
             self.accounts_payable_eur = 0.0
 
@@ -721,8 +873,8 @@ class CompanySimulationService:
         if container.fill_level_m3 > container.capacity_m3:
             container.overflowed = True
             self.overflow_count += 1
-            self.penalty_cost_eur += OVERFLOW_PENALTY_EUR
-            self.cash_balance_eur -= OVERFLOW_PENALTY_EUR
+            self.penalty_cost_eur += self.cost_policy.overflow_penalty_eur
+            self.cash_balance_eur -= self.cost_policy.overflow_penalty_eur
             container.fill_level_m3 = container.capacity_m3
 
     def _require_container(self, container_id: str | None) -> WasteContainer:
@@ -761,7 +913,7 @@ class CompanySimulationService:
         self.overhead_cost_eur = 0.0
         self.penalty_cost_eur = 0.0
         self.early_empty_cost_eur = 0.0
-        self.cash_balance_eur = DEFAULT_STARTING_CASH_EUR
+        self.cash_balance_eur = self.cost_policy.starting_cash_eur
         self.accounts_receivable_eur = 0.0
         self.accounts_payable_eur = 0.0
 
@@ -787,13 +939,28 @@ class CompanySimulationService:
         return self.revenue_eur - self.operating_cost_eur - self.rental_cost_eur - self.overhead_cost_eur - self.penalty_cost_eur - self.early_empty_cost_eur
 
     def _bankruptcy_threshold_eur(self) -> float:
-        return -DEFAULT_BANKRUPTCY_BURN_MULTIPLE * self._daily_burn_eur()
+        return bankruptcy_threshold_eur(policy=self.cost_policy)
 
     def _baseline_cycle_cost_eur(self) -> float:
         return 0.0
 
     def _daily_burn_eur(self) -> float:
-        return DEFAULT_DAILY_OVERHEAD_EUR
+        return self.cost_policy.daily_overhead_eur
+
+    def _net_working_capital_eur(self) -> float:
+        return self.cash_balance_eur + self.accounts_receivable_eur - self.accounts_payable_eur
+
+    def _runway_days(self) -> float:
+        daily_burn = self._daily_burn_eur()
+        if daily_burn <= 0:
+            return 0.0
+        return (self.cash_balance_eur - self._bankruptcy_threshold_eur()) / daily_burn
+
+    def _approval_locked_order_count(self) -> int:
+        return sum(record.dto.status == OrderStatus.BLOCKED.value for record in self.records.values())
+
+    def _approval_locked_revenue_eur(self) -> float:
+        return sum(record.dto.offered_price_eur for record in self.records.values() if record.dto.status == OrderStatus.BLOCKED.value)
 
     def _next_generation_delay_seconds(self) -> float:
         real_seconds_per_sim_day = timedelta(days=1).total_seconds() / max(self.acceleration, 1)
@@ -825,8 +992,9 @@ class CompanySimulationService:
         if now <= self._last_financial_update:
             return
         elapsed_hours = (now - self._last_financial_update).total_seconds() / 3600
-        self.overhead_cost_eur += (DEFAULT_DAILY_OVERHEAD_EUR / 24) * elapsed_hours
-        self.cash_balance_eur -= (DEFAULT_DAILY_OVERHEAD_EUR / 24) * elapsed_hours
+        hourly_overhead = self.cost_policy.daily_overhead_eur / 24
+        self.overhead_cost_eur += hourly_overhead * elapsed_hours
+        self.cash_balance_eur -= hourly_overhead * elapsed_hours
 
         for receivable in self.receivables:
             if not receivable.collected and receivable.due_at <= now:
@@ -846,7 +1014,7 @@ class CompanySimulationService:
         self._last_financial_update = now
 
     def _record_completed_order_finance(self, order: DisposalOrder, completed_at: datetime) -> None:
-        invoice_due_at = completed_at + timedelta(hours=estimate_payment_delay_hours(order.service_window))
+        invoice_due_at = completed_at + timedelta(hours=estimate_payment_delay_hours(order.service_window, policy=self.cost_policy))
         invoice = ReceivableEntry(
             entry_id=str(uuid.uuid4()),
             order_id=order.order_id,
@@ -864,10 +1032,15 @@ class CompanySimulationService:
             service_window=order.service_window,
             contamination_risk=order.contamination_risk,
             hazardous_flag=order.hazardous_flag,
+            policy=self.cost_policy,
         )
         self.operating_cost_eur += service_cost
         payable_due_at = completed_at + timedelta(
-            hours=estimate_vendor_payment_delay_hours(order.service_window, order.hazardous_flag)
+            hours=estimate_vendor_payment_delay_hours(
+                order.service_window,
+                order.hazardous_flag,
+                policy=self.cost_policy,
+            )
         )
         self._record_payable(
             amount_eur=service_cost,
@@ -927,18 +1100,21 @@ class CompanySimulationService:
         raise KeyError(request_id)
 
     def _approval_item_from_record(self, record: OrderRecord) -> ApprovalItemDTO:
+        dto = self._hydrate_disposal_order_dto(record)
         request_id = record.dto.request_id or ""
         votes = self.approval_votes.get(request_id, ApprovalVoteState())
         return ApprovalItemDTO(
             request_id=request_id,
-            order_id=record.dto.order_id,
-            title=record.dto.title,
-            customer_request=record.dto.customer_request,
-            bot_action=record.dto.bot_action or "unknown",
-            decision_summary=record.dto.decision_summary,
-            matched_rules=list(record.dto.matched_rules),
-            created_at=record.dto.created_at,
-            status=record.dto.status,
+            order_id=dto.order_id,
+            title=dto.title,
+            customer_request=dto.customer_request,
+            bot_action=dto.bot_action or "unknown",
+            baseline_economics=dto.baseline_economics,
+            projected_action_economics=dto.projected_action_economics,
+            decision_summary=dto.decision_summary,
+            matched_rules=list(dto.matched_rules),
+            created_at=dto.created_at,
+            status=dto.status,
             vote_summary={
                 "approve_votes": votes.approve_votes,
                 "reject_votes": votes.reject_votes,
@@ -984,6 +1160,7 @@ class CompanySimulationService:
             "penalty_cost_eur": self.penalty_cost_eur,
             "early_empty_cost_eur": self.early_empty_cost_eur,
             "cash_balance_eur": self.cash_balance_eur,
+            "cost_policy": self.cost_policy.to_public_dict(),
             "accounts_receivable_eur": self.accounts_receivable_eur,
             "accounts_payable_eur": self.accounts_payable_eur,
             "overflow_count": self.overflow_count,
@@ -1031,7 +1208,7 @@ class CompanySimulationService:
             self.overhead_cost_eur = payload.get("overhead_cost_eur", 0.0)
             self.penalty_cost_eur = payload.get("penalty_cost_eur", 0.0)
             self.early_empty_cost_eur = payload.get("early_empty_cost_eur", 0.0)
-            self.cash_balance_eur = payload.get("cash_balance_eur", DEFAULT_STARTING_CASH_EUR)
+            self.cash_balance_eur = payload.get("cash_balance_eur", self.cost_policy.starting_cash_eur)
             self.accounts_receivable_eur = payload.get("accounts_receivable_eur", 0.0)
             self.accounts_payable_eur = payload.get("accounts_payable_eur", 0.0)
             self.overflow_count = payload.get("overflow_count", 0)

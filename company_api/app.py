@@ -48,6 +48,7 @@ def build_app(
     operator_token: str | None = None,
     internal_api_key: str | None = None,
     persistence_path: str | Path | None = None,
+    cost_policy_path: str | Path | None = None,
 ) -> FastAPI:
     service = CompanySimulationService(
         rule_pack_path=rule_pack_path,
@@ -68,6 +69,7 @@ def build_app(
         operator_token=operator_token,
         internal_api_key=internal_api_key,
         persistence_path=persistence_path,
+        cost_policy_path=cost_policy_path,
     )
 
     @asynccontextmanager

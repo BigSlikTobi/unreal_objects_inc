@@ -1,5 +1,6 @@
 import asyncio
 from datetime import timedelta
+import json
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,10 @@ async def test_external_bot_claims_order_without_internal_processing():
     assert claim.status == OrderStatus.CLAIMED.value
     assert orders[0].status == OrderStatus.CLAIMED.value
     assert orders[0].decision_outcome is None
+    assert claim.order.order_id == "order-1"
+    assert claim.order.baseline_economics is not None
+    assert "accept_and_route" in claim.order.action_inputs
+    assert claim.order.guardrail_context_base["declared_waste_type"] == first.declared_waste_type.value
 
 
 @pytest.mark.asyncio
@@ -56,6 +61,9 @@ async def test_bot_order_view_hides_internal_execution_metadata():
     assert bot_orders[0].customer_request
     assert not hasattr(bot_orders[0], "action_payload")
     assert not hasattr(bot_orders[0], "decision_summary")
+    assert bot_orders[0].baseline_economics is not None
+    assert "rent_container" in bot_orders[0].action_inputs
+    assert "baseline_margin_eur" in bot_orders[0].guardrail_context_base
 
 
 @pytest.mark.asyncio
@@ -81,6 +89,10 @@ async def test_accept_and_route_updates_revenue_and_container_fill():
     assert service.revenue_eur == 0.0
     assert service.accounts_receivable_eur == 210.0
     assert service.containers[container.container_id].fill_level_m3 == pytest.approx(before_fill + 2.5)
+    orders = await service.get_orders()
+    assert orders[0].projected_action_economics is not None
+    assert orders[0].projected_action_economics.projected_action_cost_eur == 0.0
+    assert orders[0].projected_action_economics.projected_margin_eur > 0
 
 
 @pytest.mark.asyncio
@@ -271,6 +283,128 @@ async def test_pricing_catalog_exposes_market_quotes_and_operational_options():
     assert all(option.waste_type == WasteType.PAPER.value for option in pricing.market_quotes)
     assert pricing.operational_options
     assert all(option.waste_type in {WasteType.PAPER.value, "all"} for option in pricing.operational_options)
+
+
+@pytest.mark.asyncio
+async def test_custom_cost_policy_flows_into_pricing_and_economics(tmp_path):
+    policy_path = tmp_path / "cost-policy.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "starting_cash_eur": 12_345.0,
+                "daily_overhead_eur": 432.0,
+                "bankruptcy_burn_multiple": 7.0,
+                "overflow_penalty_eur": 222.0,
+                "customer_payment_delay_hours": {
+                    "same_day": 12,
+                    "next_day": 24,
+                    "scheduled": 36,
+                },
+            }
+        )
+    )
+    service = CompanySimulationService(
+        rule_pack_path=Path("rule_packs/support_company.json"),
+        initial_order_count=0,
+        cost_policy_path=policy_path,
+    )
+    await service.initialize()
+
+    pricing = await service.get_pricing()
+    economics = await service.get_economics()
+
+    assert pricing.policy["starting_cash_eur"] == 12_345.0
+    assert pricing.policy["daily_overhead_eur"] == 432.0
+    assert pricing.policy["overflow_penalty_eur"] == 222.0
+    assert pricing.policy["customer_payment_delay_hours"]["next_day"] == 24
+    assert economics.cash_balance_eur == 12_345.0
+    assert economics.daily_burn_eur == 432.0
+    assert economics.bankruptcy_threshold_eur == -3_024.0
+    assert economics.net_working_capital_eur == 12_345.0
+    assert economics.approval_locked_order_count == 0
+    assert economics.approval_locked_revenue_eur == 0.0
+
+
+def test_cost_policy_partial_mapping_overrides_preserve_defaults(tmp_path):
+    policy_path = tmp_path / "cost-policy-partial.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "quote_margin_multiplier": {
+                    WasteType.PAPER.value: 1.5,
+                },
+                "customer_payment_delay_hours": {
+                    ServiceWindow.NEXT_DAY.value: 12,
+                },
+                "hazardous_vendor_payment_delay_hours": 18,
+            }
+        )
+    )
+
+    from support_company.cost_policy import load_cost_policy
+
+    policy = load_cost_policy(policy_path)
+
+    assert policy.quote_margin_multiplier[WasteType.PAPER.value] == 1.5
+    assert policy.quote_margin_multiplier[WasteType.RECYCLING.value] > 0
+    assert policy.customer_payment_delay_hours[ServiceWindow.NEXT_DAY.value] == 12
+    assert policy.customer_payment_delay_hours[ServiceWindow.SAME_DAY.value] > 0
+    assert policy.hazardous_vendor_payment_delay_hours == 18
+
+
+def test_hazardous_vendor_payment_delay_comes_from_policy(tmp_path):
+    policy_path = tmp_path / "cost-policy-hazmat-delay.json"
+    policy_path.write_text(json.dumps({"hazardous_vendor_payment_delay_hours": 30}))
+
+    from support_company.cost_policy import estimate_vendor_payment_delay_hours, load_cost_policy
+
+    policy = load_cost_policy(policy_path)
+
+    assert (
+        estimate_vendor_payment_delay_hours(
+            policy=policy,
+            service_window=ServiceWindow.SAME_DAY,
+            hazardous_flag=True,
+        )
+        == 30
+    )
+
+
+@pytest.mark.asyncio
+async def test_order_views_expose_baseline_context_and_server_side_projection():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
+    await service.ingest_order(make_order("order-proj", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=180.0))
+    await service.claim_order("order-proj", bot_id="bot-alpha")
+    await service.submit_order_result(
+        order_id="order-proj",
+        bot_id="bot-alpha",
+        outcome=BotDecisionOutcome.APPROVAL_REQUIRED,
+        bot_action="rent_container",
+        action_payload={
+            "target_waste_type": WasteType.RECYCLING.value,
+            "target_container_id": container.container_id,
+            "route_quantity_m3": 1.5,
+            "added_capacity_m3": 8.0,
+            "extra_rental_cost_eur": 125.0,
+            "early_empty_cost_eur": 110.0,
+            "projected_margin_eur": -9999.0,
+        },
+        decision_summary="Need external decision with projected economics.",
+        request_id="req-proj",
+    )
+
+    orders = await service.get_orders()
+    approvals = await service.get_approvals()
+
+    assert orders[0].baseline_economics is not None
+    assert orders[0].guardrail_context_base["current_cash_balance_eur"] == round(service.cash_balance_eur, 2)
+    assert orders[0].projected_action_economics is not None
+    assert orders[0].projected_action_economics.projected_action_cost_eur == 156.25
+    assert orders[0].projected_action_economics.cost_policy_version == service.cost_policy.version
+    assert approvals[0].baseline_economics is not None
+    assert approvals[0].projected_action_economics is not None
 
 
 @pytest.mark.asyncio

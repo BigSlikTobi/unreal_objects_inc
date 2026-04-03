@@ -80,6 +80,9 @@ class DisposalOrder(BaseModel):
         self,
         bot_action: str | None = None,
         action_payload: dict | None = None,
+        baseline_economics: dict | None = None,
+        projected_action_economics: dict | None = None,
+        financial_context: dict | None = None,
     ) -> dict:
         """Convert an order and optional chosen action into a guardrail context."""
         ctx = {
@@ -91,6 +94,10 @@ class DisposalOrder(BaseModel):
             "hazardous_flag": self.hazardous_flag,
             "contamination_risk": self.contamination_risk,
         }
+        if baseline_economics:
+            ctx.update(baseline_economics)
+        if financial_context:
+            ctx.update(financial_context)
         if bot_action:
             ctx["bot_action"] = bot_action
         if action_payload:
@@ -108,6 +115,8 @@ class DisposalOrder(BaseModel):
                 ctx["extra_rental_cost_eur"] = action_payload["extra_rental_cost_eur"]
             if "early_empty_cost_eur" in action_payload:
                 ctx["early_empty_cost_eur"] = action_payload["early_empty_cost_eur"]
+        if projected_action_economics:
+            ctx.update(projected_action_economics)
         return ctx
 
 

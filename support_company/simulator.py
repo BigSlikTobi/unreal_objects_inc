@@ -16,6 +16,7 @@ from .generator import (
     generate_initial_containers,
     generate_order_event,
 )
+from .cost_policy import CostPolicy
 from .models import (
     CompanyOperationSnapshot,
     DisposalOrder,
@@ -51,6 +52,7 @@ class ScenarioGenerationConfig:
     allow_template_fallback: bool = True
     model: str = DEFAULT_LLM_MODEL
     api_key: str | None = None
+    cost_policy: CostPolicy | None = None
 
 
 class OpenAIWasteScenarioGenerator:
@@ -103,7 +105,7 @@ class OpenAIWasteScenarioGenerator:
 def generate_scenarios(config: ScenarioGenerationConfig) -> list[GeneratedScenario]:
     mode = _resolve_generation_mode(config)
     if mode == "template":
-        return generate_template_scenarios(count=config.count, seed=config.seed)
+        return generate_template_scenarios(count=config.count, seed=config.seed, cost_policy=config.cost_policy)
     if mode == "llm":
         return _generate_llm_first_scenarios(config)
     if mode == "mixed":
@@ -127,7 +129,7 @@ def _generate_llm_first_scenarios(config: ScenarioGenerationConfig) -> list[Gene
                 raise
     elif not config.allow_template_fallback:
         raise RuntimeError("OPENAI_API_KEY is required when template fallback is disabled")
-    return generate_template_scenarios(count=config.count, seed=config.seed)
+    return generate_template_scenarios(count=config.count, seed=config.seed, cost_policy=config.cost_policy)
 
 
 def _generate_mixed_scenarios(config: ScenarioGenerationConfig) -> list[GeneratedScenario]:
@@ -149,7 +151,13 @@ def _generate_mixed_scenarios(config: ScenarioGenerationConfig) -> list[Generate
             template_count += llm_count
 
     if template_count > 0:
-        scenarios.extend(generate_template_scenarios(count=template_count, seed=config.seed + 10_000))
+        scenarios.extend(
+            generate_template_scenarios(
+                count=template_count,
+                seed=config.seed + 10_000,
+                cost_policy=config.cost_policy,
+            )
+        )
 
     random.Random(config.seed).shuffle(scenarios)
     return scenarios
@@ -165,10 +173,14 @@ def _split_mixed_counts(count: int, seed: int) -> tuple[int, int]:
     return llm_count, count - llm_count
 
 
-def generate_template_scenarios(count: int = 24, seed: int = 42) -> list[GeneratedScenario]:
+def generate_template_scenarios(
+    count: int = 24,
+    seed: int = 42,
+    cost_policy: CostPolicy | None = None,
+) -> list[GeneratedScenario]:
     rng = random.Random(seed)
     base_time = datetime.now(UTC)
-    orders = generate_batch(count=count, seed=seed)
+    orders = generate_batch(count=count, seed=seed, policy=cost_policy)
     scenarios: list[GeneratedScenario] = []
 
     for idx, order in enumerate(orders):
@@ -211,5 +223,9 @@ def generate_container_fleet(seed: int = 42, now: datetime | None = None):
     return generate_initial_containers(seed=seed, now=now)
 
 
-def generate_order_batch(count: int = 50, seed: int = 42) -> list[DisposalOrder]:
-    return generate_batch(count=count, seed=seed)
+def generate_order_batch(
+    count: int = 50,
+    seed: int = 42,
+    cost_policy: CostPolicy | None = None,
+) -> list[DisposalOrder]:
+    return generate_batch(count=count, seed=seed, policy=cost_policy)

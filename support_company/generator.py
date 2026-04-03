@@ -18,6 +18,7 @@ from .models import (
     WasteContainer,
     WasteType,
 )
+from .cost_policy import CostPolicy, load_cost_policy
 from .pricing import estimate_customer_quote
 
 
@@ -160,7 +161,7 @@ def generate_initial_containers(seed: int = 42, now: datetime | None = None) -> 
     return containers
 
 
-def generate_order(rng: random.Random, family: dict) -> DisposalOrder:
+def generate_order(rng: random.Random, family: dict, policy: CostPolicy | None = None) -> DisposalOrder:
     quantity = round(rng.uniform(*family["quantity_range"]), 2)
     offered_price = estimate_customer_quote(
         waste_type=family["waste_type"],
@@ -169,6 +170,7 @@ def generate_order(rng: random.Random, family: dict) -> DisposalOrder:
         contamination_risk=family["contamination_risk"],
         hazardous_flag=family["hazardous_flag"],
         rng=rng,
+        policy=policy,
     )
     return DisposalOrder(
         title=family["title"],
@@ -189,12 +191,14 @@ def generate_batch(
     count: int = 50,
     seed: int = 42,
     mix: list[float] | None = None,
+    policy: CostPolicy | None = None,
 ) -> list[DisposalOrder]:
     weights = mix or DEFAULT_MIX
     assert len(weights) == len(_ORDER_FAMILIES), "Mix weights must match waste-order family count"
 
     rng = random.Random(seed)
-    return [generate_order(rng, rng.choices(_ORDER_FAMILIES, weights=weights, k=1)[0]) for _ in range(count)]
+    active_policy = policy or load_cost_policy()
+    return [generate_order(rng, rng.choices(_ORDER_FAMILIES, weights=weights, k=1)[0], policy=active_policy) for _ in range(count)]
 
 
 def generate_order_event(

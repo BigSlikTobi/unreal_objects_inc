@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ApprovalItemDTO, CompanyStatus, RuleDTO } from '../types';
+import { OrderEconomicsPanel } from './OrderEconomicsPanel';
 
 const VOTE_COOLDOWN_MS = 5_000;
 
@@ -82,6 +83,11 @@ export function ApprovalQueue({ approvals, rules = [], status, onVote, onFinaliz
         </div>
 
         <p className={`${isModal ? 'approval-featured-request' : 'text-sm'} text-[var(--text-primary)]`}>"{approval.customer_request}"</p>
+        <OrderEconomicsPanel
+          baseline={approval.baseline_economics}
+          projected={approval.projected_action_economics}
+          compact={!isModal}
+        />
         {approval.decision_summary && <p className={`${isModal ? 'text-sm leading-6' : 'text-xs'} text-[var(--text-secondary)]`}>{approval.decision_summary}</p>}
 
         {matchedRuleNames.length > 0 && (

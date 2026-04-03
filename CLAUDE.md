@@ -98,21 +98,18 @@ Run in three terminals:
 
 ## Railway Deployment (Cloud)
 
-The project deploys to Railway as **5 separate services**:
+The stack splits across two Railway projects:
 
-| Service | Dockerfile | Port | Public? | Description |
-|---------|-----------|------|---------|-------------|
-| `rule-engine` | `Dockerfile.rule-engine` | 8001 | Yes | Rule Engine (loads waste rule pack on startup) |
-| `decision-center` | `Dockerfile.decision-center` | 8002 | Yes | Decision Center |
-| `company` | `Dockerfile.company` | 8010 | Yes | Company API + compiled dashboard |
-| `mcp` | `Dockerfile.mcp` | 8000 | Yes | MCP Server for AI agent access |
-| `ui` | `Dockerfile.ui` | 5173 | Yes | Unreal Objects admin UI (React/Vite, multi-stage build) |
+- **`unreal_objects` project** — Rule Engine, Decision Center, MCP, UI. Deployed directly from the [unreal_objects](https://github.com/BigSlikTobi/unreal_objects) repo.
+- **`unreal_objects_inc` project** — Single service:
 
-**Why separate rule-engine and decision-center?** Railway exposes one port per service. The admin UI (`Dockerfile.ui`) needs browser-side access to both Rule Engine and Decision Center, so each must have its own public domain — they cannot share a container.
+| Service | Dockerfile | Port | Public URL |
+|---------|-----------|------|------------|
+| `company` | `Dockerfile.company` | 8010 | `unrealobjectsinc-production.up.railway.app` |
 
-**Submodule vs GitHub install**: All Dockerfiles install `unreal_objects` directly from GitHub (`pip install git+https://github.com/BigSlikTobi/unreal_objects.git`) rather than using a git submodule, because Railway does not clone submodules.
-
-**UI build-time env vars**: `Dockerfile.ui` accepts `VITE_RULE_ENGINE_BASE_URL` and `VITE_DECISION_CENTER_BASE_URL` as build ARGs. These must be set in Railway before the first deploy or the UI will fail at runtime.
+The company service connects to the external unreal_objects services via their public URLs:
+- Rule Engine: `https://ruleengine-production-d6fe.up.railway.app`
+- Decision Center: `https://decisioncenter-production-1c81.up.railway.app`
 
 **Bot worker** runs locally (e.g., Raspberry Pi) and is not deployed to Railway. Configure `COMPANY_API_URL` and `DECISION_CENTER_URL` env vars on the Pi pointing at the live Railway public URLs.
 
@@ -126,3 +123,4 @@ See `docs/deployment-railway.md` for the full step-by-step guide and `railway.to
 - **Deterministic generation**: Case generators use seeds for reproducible runs (`seed=42` default).
 - **Company API serves dashboard**: When `dashboard/dist/` exists, the FastAPI app mounts it as a catch-all SPA route, enabling single-process deployment.
 - **One-port-per-Railway-service constraint**: The reason Rule Engine and Decision Center are split into separate Railway services is that Railway only exposes one port per service, and the admin UI needs browser access to both.
+- **Split Railway projects**: The Unreal Objects infrastructure (Rule Engine, Decision Center, MCP, UI) deploys from the `unreal_objects` repo into its own Railway project. This repo only deploys the company simulation, which connects to those services via public HTTPS URLs.
