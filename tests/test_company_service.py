@@ -325,6 +325,51 @@ async def test_custom_cost_policy_flows_into_pricing_and_economics(tmp_path):
     assert economics.approval_locked_revenue_eur == 0.0
 
 
+def test_cost_policy_partial_mapping_overrides_preserve_defaults(tmp_path):
+    policy_path = tmp_path / "cost-policy-partial.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "quote_margin_multiplier": {
+                    WasteType.PAPER.value: 1.5,
+                },
+                "customer_payment_delay_hours": {
+                    ServiceWindow.NEXT_DAY.value: 12,
+                },
+                "hazardous_vendor_payment_delay_hours": 18,
+            }
+        )
+    )
+
+    from support_company.cost_policy import load_cost_policy
+
+    policy = load_cost_policy(policy_path)
+
+    assert policy.quote_margin_multiplier[WasteType.PAPER.value] == 1.5
+    assert policy.quote_margin_multiplier[WasteType.RECYCLING.value] > 0
+    assert policy.customer_payment_delay_hours[ServiceWindow.NEXT_DAY.value] == 12
+    assert policy.customer_payment_delay_hours[ServiceWindow.SAME_DAY.value] > 0
+    assert policy.hazardous_vendor_payment_delay_hours == 18
+
+
+def test_hazardous_vendor_payment_delay_comes_from_policy(tmp_path):
+    policy_path = tmp_path / "cost-policy-hazmat-delay.json"
+    policy_path.write_text(json.dumps({"hazardous_vendor_payment_delay_hours": 30}))
+
+    from support_company.cost_policy import estimate_vendor_payment_delay_hours, load_cost_policy
+
+    policy = load_cost_policy(policy_path)
+
+    assert (
+        estimate_vendor_payment_delay_hours(
+            policy=policy,
+            service_window=ServiceWindow.SAME_DAY,
+            hazardous_flag=True,
+        )
+        == 30
+    )
+
+
 @pytest.mark.asyncio
 async def test_order_views_expose_baseline_context_and_server_side_projection():
     service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)

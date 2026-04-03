@@ -159,13 +159,59 @@ class CostPolicy:
     service_window_cost_multiplier: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_SERVICE_WINDOW_COST_MULTIPLIER))
     customer_payment_delay_hours: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_PAYMENT_DELAY_HOURS))
     vendor_payment_delay_hours: dict[str, int] = field(default_factory=lambda: dict(DEFAULT_VENDOR_PAYMENT_DELAY_HOURS))
+    hazardous_vendor_payment_delay_hours: int = 12
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> "CostPolicy":
         payload = json.loads(Path(path).read_text())
-        merged = asdict(cls())
-        merged.update(payload)
+        if not isinstance(payload, dict):
+            raise ValueError("Cost policy JSON must be a JSON object.")
+        merged = cls._merge_payload(payload)
+        cls._validate_required_mapping_keys(merged)
         return cls(**merged)
+
+    @classmethod
+    def _merge_payload(cls, payload: dict[str, object]) -> dict[str, object]:
+        merged = asdict(cls())
+        mapping_fields = {
+            "quote_margin_multiplier",
+            "service_base_cost_eur",
+            "service_cost_per_m3_eur",
+            "service_window_price_multiplier",
+            "service_window_cost_multiplier",
+            "customer_payment_delay_hours",
+            "vendor_payment_delay_hours",
+        }
+        for key, value in payload.items():
+            if key in mapping_fields:
+                if not isinstance(value, dict):
+                    raise ValueError(f"Cost policy field '{key}' must be a JSON object.")
+                merged[key].update(value)
+                continue
+            merged[key] = value
+        return merged
+
+    @classmethod
+    def _validate_required_mapping_keys(cls, merged: dict[str, object]) -> None:
+        defaults = asdict(cls())
+        mapping_fields = {
+            "quote_margin_multiplier",
+            "service_base_cost_eur",
+            "service_cost_per_m3_eur",
+            "service_window_price_multiplier",
+            "service_window_cost_multiplier",
+            "customer_payment_delay_hours",
+            "vendor_payment_delay_hours",
+        }
+        for field_name in mapping_fields:
+            field_value = merged.get(field_name)
+            if not isinstance(field_value, dict):
+                raise ValueError(f"Cost policy field '{field_name}' must be a JSON object.")
+            missing_keys = sorted(set(defaults[field_name]) - set(field_value))
+            if missing_keys:
+                raise ValueError(
+                    f"Cost policy field '{field_name}' is missing required keys: {missing_keys}"
+                )
 
     def to_public_dict(self) -> dict[str, object]:
         return {
@@ -179,6 +225,7 @@ class CostPolicy:
             "max_cash_gap_hours": self.max_cash_gap_hours,
             "customer_payment_delay_hours": dict(self.customer_payment_delay_hours),
             "vendor_payment_delay_hours": dict(self.vendor_payment_delay_hours),
+            "hazardous_vendor_payment_delay_hours": self.hazardous_vendor_payment_delay_hours,
         }
 
 
@@ -219,7 +266,7 @@ def estimate_vendor_payment_delay_hours(
     hazardous_flag: bool,
 ) -> int:
     if hazardous_flag:
-        return 12
+        return int(policy.hazardous_vendor_payment_delay_hours)
     return int(policy.vendor_payment_delay_hours[service_window.value])
 
 

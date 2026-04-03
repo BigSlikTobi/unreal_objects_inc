@@ -69,7 +69,7 @@ Railway auto-deploys on push.
 
 ```bash
 # Company API health
-curl https://unrealobjectsinc-production.up.railway.app/health
+curl https://unrealobjectsinc-production.up.railway.app/v1/health
 
 # Dashboard — open in browser
 open https://unrealobjectsinc-production.up.railway.app
