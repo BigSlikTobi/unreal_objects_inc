@@ -532,6 +532,14 @@ class CompanySimulationService:
                 for record in sorted(self.records.values(), key=lambda record: record.sort_created_at, reverse=True)
             ]
 
+    async def get_bot_order(self, order_id: str) -> BotInboxOrderDTO:
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self.records.get(order_id)
+            if record is None:
+                raise KeyError(order_id)
+            return self._to_bot_inbox_order(record)
+
     async def get_bot_orders(self) -> list[BotInboxOrderDTO]:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())

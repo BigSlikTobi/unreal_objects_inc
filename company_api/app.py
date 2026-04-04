@@ -17,6 +17,7 @@ from .models import (
     ApprovalFinalizeRequest,
     ApprovalVoteRequest,
     ApprovalsResponse,
+    BotInboxOrderDTO,
     BotOrdersResponse,
     DisposalOrderWebhookPayload,
     EventsResponse,
@@ -115,6 +116,13 @@ def build_app(
         if status is not None:
             current_orders = [order for order in current_orders if order.status == status]
         return OrdersResponse(orders=current_orders, total=len(current_orders))
+
+    @app.get("/api/v1/orders/{order_id}", response_model=BotInboxOrderDTO)
+    async def get_order(order_id: str):
+        try:
+            return await service.get_bot_order(order_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Order not found") from exc
 
     @app.post("/api/v1/orders/{order_id}/claim")
     async def claim_order(order_id: str, payload: OrderClaimRequest):
