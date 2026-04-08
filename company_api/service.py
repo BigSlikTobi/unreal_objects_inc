@@ -1153,6 +1153,7 @@ class CompanySimulationService:
         self.persistence_path.parent.mkdir(parents=True, exist_ok=True)
         snapshot = {
             "virtual_start": isoformat(self._virtual_start),
+            "virtual_now": isoformat(self._virtual_now()),
             "real_start": isoformat(self._real_start),
             "current_run_started_at": isoformat(self._current_run_started_at),
             "last_financial_update": isoformat(self._last_financial_update),
@@ -1189,7 +1190,18 @@ class CompanySimulationService:
             return False
         payload = json.loads(self.persistence_path.read_text())
         async with self._lock:
-            self._virtual_start = datetime.fromisoformat(payload["virtual_start"])
+            # Resume virtual time from where the previous run stopped instead
+            # of rewinding to the original simulation epoch. Without this,
+            # `_virtual_now()` would briefly return a time earlier than
+            # `_last_financial_update`, causing `_advance_financials_locked`
+            # to early-return and never collect matured receivables — the
+            # company would drain to bankruptcy without any cash inflow.
+            resume_virtual = (
+                datetime.fromisoformat(payload["virtual_now"])
+                if payload.get("virtual_now")
+                else datetime.fromisoformat(payload["virtual_start"])
+            )
+            self._virtual_start = resume_virtual
             self._real_start = utcnow()
             self._current_run_started_at = (
                 datetime.fromisoformat(payload["current_run_started_at"])
