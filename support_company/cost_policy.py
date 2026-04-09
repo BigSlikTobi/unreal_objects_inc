@@ -65,9 +65,9 @@ DEFAULT_SERVICE_WINDOW_COST_MULTIPLIER = {
 }
 
 DEFAULT_PAYMENT_DELAY_HOURS = {
-    ServiceWindow.SAME_DAY.value: 48,
-    ServiceWindow.NEXT_DAY.value: 72,
-    ServiceWindow.SCHEDULED.value: 96,
+    ServiceWindow.SAME_DAY.value: 6,
+    ServiceWindow.NEXT_DAY.value: 18,
+    ServiceWindow.SCHEDULED.value: 30,
 }
 
 DEFAULT_VENDOR_PAYMENT_DELAY_HOURS = {
