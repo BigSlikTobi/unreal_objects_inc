@@ -285,12 +285,13 @@ def compute_dynamic_early_empty_cost(
 
     Low fill → expensive (wasteful to empty), high fill → discounted (prevent overflow).
     Near scheduled pickup → expensive (just wait), far from pickup → cheaper.
+    Cost is capped at the overflow penalty so it's always rational to empty vs overflow.
     """
     # Fill urgency: 1.0 at 0% fill → 0.5 at 100% fill
     fill_factor = 1.0 - (fill_ratio * 0.5)
 
     # Pickup proximity: expensive if pickup is soon, cheaper if far away
-    proximity_factor = max(0.3, min(1.5, 1.0 - (hours_to_pickup / 48)))
+    proximity_factor = max(0.3, 1.0 - (hours_to_pickup / 48))
 
     # Overflow risk: heavy discount when overflow is imminent
     overflow_discount = 1.0
@@ -300,7 +301,8 @@ def compute_dynamic_early_empty_cost(
         overflow_discount = 0.6
 
     dynamic_cost = base_cost * fill_factor * proximity_factor * overflow_discount
-    return round(max(dynamic_cost, 5.0), 2)
+    # Cap at overflow penalty so emptying is always cheaper than overflowing
+    return round(max(min(dynamic_cost, overflow_penalty_eur * 0.9), 5.0), 2)
 
 
 def project_order_economics(

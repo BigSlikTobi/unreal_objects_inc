@@ -861,7 +861,15 @@ class CompanySimulationService:
 
         if bot_action == "schedule_early_empty":
             container = self._require_container(payload.get("target_container_id"))
-            self._apply_early_empty(container, now, container.base_early_empty_cost_eur, "early_empty", order.order_id)
+            fill_ratio = container.fill_level_m3 / container.capacity_m3 if container.capacity_m3 > 0 else 0.0
+            hours_to_pickup = max(0.0, (container.next_empty_at - now).total_seconds() / 3600)
+            cost = compute_dynamic_early_empty_cost(
+                base_cost=container.base_early_empty_cost_eur,
+                fill_ratio=fill_ratio,
+                hours_to_pickup=hours_to_pickup,
+                overflow_penalty_eur=self.cost_policy.overflow_penalty_eur,
+            )
+            self._apply_early_empty(container, now, cost, "early_empty", order.order_id)
             quantity = float(payload.get("route_quantity_m3", order.quantity_m3))
             self._route_into_container(container, order, quantity)
             self._record_completed_order_finance(order, completed_at=now)
