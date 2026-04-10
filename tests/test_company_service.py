@@ -11,7 +11,6 @@ from company_api.service import (
     DEFAULT_ACCELERATION,
     DEFAULT_BANKRUPTCY_BURN_MULTIPLE,
     DEFAULT_DAILY_OVERHEAD_EUR,
-    DEFAULT_TARGET_ORDERS_PER_SIM_DAY,
     OVERFLOW_PENALTY_EUR,
 )
 from support_company.models import DisposalOrder, OrderPriority, ServiceWindow, WasteType
@@ -215,12 +214,15 @@ async def test_bounded_rolling_mode_seeds_small_bootstrap_and_then_trickles_orde
 
 
 def test_generation_delay_stays_within_stress_window():
+    from company_api.service import DEFAULT_ORDER_INTERVAL_REAL_SECONDS
     service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0, seed=42)
 
     samples = [service._next_generation_delay_seconds() for _ in range(20)]
-    average_delay = (timedelta(days=1).total_seconds() / DEFAULT_ACCELERATION) / DEFAULT_TARGET_ORDERS_PER_SIM_DAY
 
-    assert all((average_delay * 0.75) <= sample <= (average_delay * 1.25) for sample in samples)
+    assert all(
+        (DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 0.75) <= sample <= (DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 1.25)
+        for sample in samples
+    )
 
 
 @pytest.mark.asyncio

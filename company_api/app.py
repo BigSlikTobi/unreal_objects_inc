@@ -27,7 +27,7 @@ from .models import (
     PricingCatalogResponse,
 )
 from .service import CompanySimulationService
-from .service import DEFAULT_ACCELERATION
+from .service import DEFAULT_ACCELERATION, DEFAULT_ORDER_INTERVAL_REAL_SECONDS
 
 
 def build_app(
@@ -36,6 +36,7 @@ def build_app(
     rolling_generation: bool = False,
     seed: int = 42,
     acceleration: int = DEFAULT_ACCELERATION,
+    order_interval: float = DEFAULT_ORDER_INTERVAL_REAL_SECONDS,
     generator_mode: str = "mixed",
     rule_engine_url: str = "http://127.0.0.1:8001",
     decision_center_url: str = "http://127.0.0.1:8002",
@@ -57,6 +58,7 @@ def build_app(
         rolling_generation=rolling_generation,
         seed=seed,
         acceleration=acceleration,
+        order_interval=order_interval,
         generator_mode=generator_mode,
         rule_engine_url=rule_engine_url,
         decision_center_url=decision_center_url,

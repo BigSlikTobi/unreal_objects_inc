@@ -7,7 +7,7 @@ import uvicorn
 
 from .app import build_app
 from support_company.simulator import DEFAULT_LLM_MODEL
-from .service import DEFAULT_ACCELERATION
+from .service import DEFAULT_ACCELERATION, DEFAULT_ORDER_INTERVAL_REAL_SECONDS
 
 
 DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "support_company.json"
@@ -20,6 +20,7 @@ DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "sup
 @click.option("--rolling/--no-rolling", default=False, help="Generate bounded orders gradually over time instead of seeding them all at once.")
 @click.option("--seed", default=42, help="Seed for deterministic case generation.")
 @click.option("--acceleration", default=DEFAULT_ACCELERATION, help="Virtual clock acceleration multiplier.")
+@click.option("--order-interval", default=DEFAULT_ORDER_INTERVAL_REAL_SECONDS, type=click.FloatRange(min=0.0, min_open=True), help="Average real-time seconds between new orders.")
 @click.option("--deployment-mode", type=click.Choice(["local", "hosted"], case_sensitive=False), default="local", help="Run in local LAN mode or hosted public mode.")
 @click.option("--rule-engine-url", default="http://127.0.0.1:8001", help="Unreal Objects Rule Engine base URL.")
 @click.option("--decision-center-url", default="http://127.0.0.1:8002", help="Unreal Objects Decision Center base URL.")
@@ -55,6 +56,7 @@ def main(
     rolling: bool,
     seed: int,
     acceleration: int,
+    order_interval: float,
     deployment_mode: str,
     rule_engine_url: str,
     decision_center_url: str,
@@ -80,6 +82,7 @@ def main(
         rolling_generation=rolling,
         seed=seed,
         acceleration=acceleration,
+        order_interval=order_interval,
         deployment_mode=deployment_mode,
         generator_mode=generator_mode,
         rule_engine_url=rule_engine_url,

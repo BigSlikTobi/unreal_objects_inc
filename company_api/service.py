@@ -66,7 +66,7 @@ from .models import (
 
 CONTINUOUS_BOOTSTRAP_ORDERS = 2
 DEFAULT_ACCELERATION = 24
-DEFAULT_TARGET_ORDERS_PER_SIM_DAY = 1_000
+DEFAULT_ORDER_INTERVAL_REAL_SECONDS = 60.0
 DEFAULT_BANKRUPTCY_BURN_MULTIPLE = COST_POLICY_DEFAULT_BANKRUPTCY_BURN_MULTIPLE
 DEFAULT_DAILY_OVERHEAD_EUR = COST_POLICY_DEFAULT_DAILY_OVERHEAD_EUR
 OVERFLOW_PENALTY_EUR = 350.0
@@ -92,6 +92,7 @@ class CompanySimulationService:
         rolling_generation: bool = False,
         seed: int = 42,
         acceleration: int = DEFAULT_ACCELERATION,
+        order_interval: float = DEFAULT_ORDER_INTERVAL_REAL_SECONDS,
         generator_mode: str = "mixed",
         rule_engine_url: str = "http://127.0.0.1:8001",
         decision_center_url: str = "http://127.0.0.1:8002",
@@ -113,6 +114,7 @@ class CompanySimulationService:
         self.rolling_generation = rolling_generation
         self.seed = seed
         self.acceleration = acceleration
+        self.order_interval = order_interval
         self.generator_mode = generator_mode
         self.rule_engine_url = rule_engine_url.rstrip("/")
         self.decision_center_url = decision_center_url.rstrip("/")
@@ -1033,9 +1035,10 @@ class CompanySimulationService:
         return sum(record.dto.offered_price_eur for record in self.records.values() if record.dto.status == OrderStatus.BLOCKED.value)
 
     def _next_generation_delay_seconds(self) -> float:
-        real_seconds_per_sim_day = timedelta(days=1).total_seconds() / max(self.acceleration, 1)
-        average_delay = real_seconds_per_sim_day / DEFAULT_TARGET_ORDERS_PER_SIM_DAY
-        return self._arrival_rng.uniform(average_delay * 0.75, average_delay * 1.25)
+        return self._arrival_rng.uniform(
+            self.order_interval * 0.75,
+            self.order_interval * 1.25,
+        )
 
     def _virtual_now(self) -> datetime:
         elapsed = utcnow() - self._real_start
