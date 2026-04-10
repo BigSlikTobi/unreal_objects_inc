@@ -11,7 +11,6 @@ from company_api.service import (
     DEFAULT_ACCELERATION,
     DEFAULT_BANKRUPTCY_BURN_MULTIPLE,
     DEFAULT_DAILY_OVERHEAD_EUR,
-    DEFAULT_TARGET_ORDERS_PER_SIM_DAY,
     OVERFLOW_PENALTY_EUR,
 )
 from support_company.models import DisposalOrder, OrderPriority, ServiceWindow, WasteType
