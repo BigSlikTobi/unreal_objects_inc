@@ -65,6 +65,10 @@ export function EconomicsPanel({ economics }: Props) {
           <span className={ledgerValueClass('cost', economics?.penalty_cost_eur)}>{money(economics?.penalty_cost_eur)}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
+          <span className="text-[var(--text-secondary)]">Penalty Avoided</span>
+          <span className={ledgerValueClass('positive', economics?.overflow_penalty_avoided_eur)}>{money(economics?.overflow_penalty_avoided_eur)}</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
           <span className="text-[var(--text-secondary)]">Early Empty Cost</span>
           <span className={ledgerValueClass('cost', economics?.early_empty_cost_eur)}>{money(economics?.early_empty_cost_eur)}</span>
         </div>

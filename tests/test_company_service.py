@@ -674,3 +674,88 @@ async def test_persistence_restores_runtime_state(tmp_path, monkeypatch):
 
     assert approvals[0].request_id == "req-8"
     assert approvals[0].vote_summary.reject_votes == 1
+
+
+@pytest.mark.asyncio
+async def test_dynamic_early_empty_cost_varies_with_fill_ratio():
+    from support_company.cost_policy import compute_dynamic_early_empty_cost
+    low_fill = compute_dynamic_early_empty_cost(
+        base_cost=100.0, fill_ratio=0.2, hours_to_pickup=24.0, overflow_penalty_eur=350.0,
+    )
+    high_fill = compute_dynamic_early_empty_cost(
+        base_cost=100.0, fill_ratio=0.8, hours_to_pickup=24.0, overflow_penalty_eur=350.0,
+    )
+    assert high_fill < low_fill, "Higher fill ratio should yield lower (discounted) cost"
+
+
+@pytest.mark.asyncio
+async def test_dynamic_cost_cheaper_near_overflow():
+    from support_company.cost_policy import compute_dynamic_early_empty_cost
+    at_90 = compute_dynamic_early_empty_cost(
+        base_cost=100.0, fill_ratio=0.92, hours_to_pickup=24.0, overflow_penalty_eur=350.0,
+    )
+    at_50 = compute_dynamic_early_empty_cost(
+        base_cost=100.0, fill_ratio=0.5, hours_to_pickup=24.0, overflow_penalty_eur=350.0,
+    )
+    assert at_90 < at_50 * 0.5, "Near-overflow cost should be heavily discounted"
+
+
+@pytest.mark.asyncio
+async def test_standalone_early_empty_resets_container():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
+    container.fill_level_m3 = container.capacity_m3 * 0.8
+
+    result = await service.early_empty_container(container.container_id, bot_id="bot-alpha")
+
+    assert container.fill_level_m3 == 0.0
+    assert service.overflow_prevented_count == 1
+    assert service.overflow_penalty_avoided_eur == OVERFLOW_PENALTY_EUR
+    assert service.proactive_early_empty_cost_eur > 0
+    assert result["fill_level_m3"] == 0.0
+    assert len([p for p in service.payables if p.category == "proactive_early_empty"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_standalone_early_empty_on_empty_container_rejected():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
+    container.fill_level_m3 = 0.0
+
+    with pytest.raises(ValueError, match="already empty"):
+        await service.early_empty_container(container.container_id, bot_id="bot-alpha")
+
+
+@pytest.mark.asyncio
+async def test_economics_tracks_avoided_penalties():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
+    container.fill_level_m3 = container.capacity_m3 * 0.85
+
+    await service.early_empty_container(container.container_id, bot_id="bot-alpha")
+    economics = await service.get_economics()
+
+    assert economics.overflow_prevented_count == 1
+    assert economics.overflow_penalty_avoided_eur == OVERFLOW_PENALTY_EUR
+    assert economics.proactive_early_empty_cost_eur > 0
+
+
+@pytest.mark.asyncio
+async def test_bankruptcy_reset_clears_prevention_counters():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
+    container.fill_level_m3 = container.capacity_m3 * 0.9
+    await service.early_empty_container(container.container_id, bot_id="bot-alpha")
+    assert service.overflow_prevented_count == 1
+
+    # Force bankruptcy
+    service.cash_balance_eur = service._bankruptcy_threshold_eur() - 50.0
+    await service.get_status()
+
+    assert service.overflow_prevented_count == 0
+    assert service.overflow_penalty_avoided_eur == 0.0
+    assert service.proactive_early_empty_cost_eur == 0.0

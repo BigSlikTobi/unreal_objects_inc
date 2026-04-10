@@ -274,6 +274,35 @@ def bankruptcy_threshold_eur(*, policy: CostPolicy) -> float:
     return -policy.bankruptcy_burn_multiple * policy.daily_overhead_eur
 
 
+def compute_dynamic_early_empty_cost(
+    *,
+    base_cost: float,
+    fill_ratio: float,
+    hours_to_pickup: float,
+    overflow_penalty_eur: float,
+) -> float:
+    """Compute dynamic early-empty cost based on container state.
+
+    Low fill → expensive (wasteful to empty), high fill → discounted (prevent overflow).
+    Near scheduled pickup → expensive (just wait), far from pickup → cheaper.
+    """
+    # Fill urgency: 1.0 at 0% fill → 0.5 at 100% fill
+    fill_factor = 1.0 - (fill_ratio * 0.5)
+
+    # Pickup proximity: expensive if pickup is soon, cheaper if far away
+    proximity_factor = max(0.3, min(1.5, 1.0 - (hours_to_pickup / 48)))
+
+    # Overflow risk: heavy discount when overflow is imminent
+    overflow_discount = 1.0
+    if fill_ratio >= 0.9:
+        overflow_discount = 0.3
+    elif fill_ratio >= 0.75:
+        overflow_discount = 0.6
+
+    dynamic_cost = base_cost * fill_factor * proximity_factor * overflow_discount
+    return round(max(dynamic_cost, 5.0), 2)
+
+
 def project_order_economics(
     *,
     policy: CostPolicy,

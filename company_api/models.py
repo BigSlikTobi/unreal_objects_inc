@@ -32,6 +32,7 @@ class CompanyStats(BaseModel):
     active_containers: int
     rented_extra_containers: int
     overflow_count: int
+    overflow_prevented_count: int = 0
     bankruptcy_count: int
 
 
@@ -158,12 +159,16 @@ class ContainerDTO(BaseModel):
     fill_level_m3: float
     fill_ratio: float
     rental_cost_per_cycle_eur: float
+    base_early_empty_cost_eur: float
     early_empty_cost_eur: float
     emptying_interval_hours: int
+    hours_to_next_empty: float
     next_empty_at: str
     last_emptied_at: str
     is_rented_extra: bool
     overflowed: bool
+    overflow_penalty_eur: float
+    at_risk: bool
 
 
 class ContainersResponse(BaseModel):
@@ -190,6 +195,9 @@ class EconomicsSnapshot(BaseModel):
     approval_locked_revenue_eur: float
     profit_eur: float
     overflow_count: int
+    overflow_prevented_count: int = 0
+    overflow_penalty_avoided_eur: float = 0.0
+    proactive_early_empty_cost_eur: float = 0.0
     bankruptcy_count: int
     current_run_id: int
 

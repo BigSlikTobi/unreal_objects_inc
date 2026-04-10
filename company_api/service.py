@@ -18,6 +18,7 @@ from support_company.cost_policy import (
     CostPolicy,
     ProjectedEconomics,
     bankruptcy_threshold_eur,
+    compute_dynamic_early_empty_cost,
     load_cost_policy,
     project_action_economics,
     project_order_economics,
@@ -164,6 +165,9 @@ class CompanySimulationService:
         self.receivables: list[ReceivableEntry] = []
         self.payables: list[PayableEntry] = []
         self.overflow_count = 0
+        self.overflow_prevented_count = 0
+        self.overflow_penalty_avoided_eur = 0.0
+        self.proactive_early_empty_cost_eur = 0.0
         self.bankruptcy_count = 0
 
         self._continuous_task: asyncio.Task | None = None
@@ -336,7 +340,7 @@ class CompanySimulationService:
                     "available_capacity_m3": round(max(container.capacity_m3 - container.fill_level_m3, 0.0), 2),
                     "recovered_capacity_m3": round(container.capacity_m3, 2),
                     "route_quantity_m3": order.quantity_m3,
-                    "early_empty_cost_eur": round(container.early_empty_cost_eur, 2),
+                    "early_empty_cost_eur": round(container.base_early_empty_cost_eur, 2),
                     "emptying_interval_hours": container.emptying_interval_hours,
                 }
                 for container in matching_containers
@@ -493,6 +497,7 @@ class CompanySimulationService:
             active_containers=len(containers),
             rented_extra_containers=sum(container.is_rented_extra for container in containers),
             overflow_count=self.overflow_count,
+            overflow_prevented_count=self.overflow_prevented_count,
             bankruptcy_count=self.bankruptcy_count,
         )
         return CompanyStatus(
@@ -577,6 +582,9 @@ class CompanySimulationService:
                 approval_locked_revenue_eur=round(self._approval_locked_revenue_eur(), 2),
                 profit_eur=round(self._profit(), 2),
                 overflow_count=self.overflow_count,
+                overflow_prevented_count=self.overflow_prevented_count,
+                overflow_penalty_avoided_eur=round(self.overflow_penalty_avoided_eur, 2),
+                proactive_early_empty_cost_eur=round(self.proactive_early_empty_cost_eur, 2),
                 bankruptcy_count=self.bankruptcy_count,
                 current_run_id=self._current_run_id,
             )
@@ -829,7 +837,7 @@ class CompanySimulationService:
                 capacity_m3=capacity,
                 fill_level_m3=0.0,
                 rental_cost_per_cycle_eur=rental,
-                early_empty_cost_eur=float(payload.get("early_empty_cost_eur", 180.0)),
+                base_early_empty_cost_eur=float(payload.get("early_empty_cost_eur", 180.0)),
                 emptying_interval_hours=int(payload.get("emptying_interval_hours", 24)),
                 last_emptied_at=now,
                 next_empty_at=now + timedelta(hours=int(payload.get("emptying_interval_hours", 24))),
@@ -853,18 +861,7 @@ class CompanySimulationService:
 
         if bot_action == "schedule_early_empty":
             container = self._require_container(payload.get("target_container_id"))
-            container.fill_level_m3 = 0.0
-            container.overflowed = False
-            container.last_emptied_at = now
-            container.next_empty_at = now + timedelta(hours=container.emptying_interval_hours)
-            self.early_empty_cost_eur += container.early_empty_cost_eur
-            self._record_payable(
-                amount_eur=container.early_empty_cost_eur,
-                created_at=now,
-                due_at=now + timedelta(hours=12),
-                category="early_empty",
-                order_id=order.order_id,
-            )
+            self._apply_early_empty(container, now, container.base_early_empty_cost_eur, "early_empty", order.order_id)
             quantity = float(payload.get("route_quantity_m3", order.quantity_m3))
             self._route_into_container(container, order, quantity)
             self._record_completed_order_finance(order, completed_at=now)
@@ -884,6 +881,48 @@ class CompanySimulationService:
             self.penalty_cost_eur += self.cost_policy.overflow_penalty_eur
             self.cash_balance_eur -= self.cost_policy.overflow_penalty_eur
             container.fill_level_m3 = container.capacity_m3
+
+    def _apply_early_empty(self, container: WasteContainer, now: datetime, cost_eur: float, category: str, reference_id: str | None = None) -> None:
+        """Shared helper: reset container fill, charge early-empty cost, record payable."""
+        container.fill_level_m3 = 0.0
+        container.overflowed = False
+        container.last_emptied_at = now
+        container.next_empty_at = now + timedelta(hours=container.emptying_interval_hours)
+        self.early_empty_cost_eur += cost_eur
+        self._record_payable(
+            amount_eur=cost_eur,
+            created_at=now,
+            due_at=now + timedelta(hours=12),
+            category=category,
+            order_id=reference_id,
+        )
+
+    async def early_empty_container(self, container_id: str, bot_id: str) -> dict:
+        """Standalone proactive early-empty triggered by the bot (no disposal order)."""
+        async with self._lock:
+            now = self._virtual_now()
+            self._refresh_runtime_locked(now)
+            if container_id not in self.containers:
+                raise KeyError(f"Container {container_id} not found")
+            container = self.containers[container_id]
+            if container.fill_level_m3 <= 0:
+                raise ValueError("Container is already empty")
+            fill_ratio = container.fill_level_m3 / container.capacity_m3 if container.capacity_m3 > 0 else 0.0
+            hours_to_pickup = max(0.0, (container.next_empty_at - now).total_seconds() / 3600)
+            dynamic_cost = compute_dynamic_early_empty_cost(
+                base_cost=container.base_early_empty_cost_eur,
+                fill_ratio=fill_ratio,
+                hours_to_pickup=hours_to_pickup,
+                overflow_penalty_eur=self.cost_policy.overflow_penalty_eur,
+            )
+            self._apply_early_empty(container, now, dynamic_cost, "proactive_early_empty")
+            self.overflow_prevented_count += 1
+            self.overflow_penalty_avoided_eur += self.cost_policy.overflow_penalty_eur
+            self.proactive_early_empty_cost_eur += dynamic_cost
+            self.bot_identity = bot_id
+            self.bot_last_seen_at = now
+            await self._persist_state_locked()
+            return self._container_to_dto(container).model_dump(mode="json")
 
     def _require_container(self, container_id: str | None) -> WasteContainer:
         if not container_id or container_id not in self.containers:
@@ -924,9 +963,20 @@ class CompanySimulationService:
         self.cash_balance_eur = self.cost_policy.starting_cash_eur
         self.accounts_receivable_eur = 0.0
         self.accounts_payable_eur = 0.0
+        self.overflow_prevented_count = 0
+        self.overflow_penalty_avoided_eur = 0.0
+        self.proactive_early_empty_cost_eur = 0.0
 
     def _container_to_dto(self, container: WasteContainer) -> ContainerDTO:
         fill_ratio = 0.0 if container.capacity_m3 <= 0 else container.fill_level_m3 / container.capacity_m3
+        now = self._virtual_now()
+        hours_to_next_empty = max(0.0, (container.next_empty_at - now).total_seconds() / 3600)
+        dynamic_cost = compute_dynamic_early_empty_cost(
+            base_cost=container.base_early_empty_cost_eur,
+            fill_ratio=fill_ratio,
+            hours_to_pickup=hours_to_next_empty,
+            overflow_penalty_eur=self.cost_policy.overflow_penalty_eur,
+        )
         return ContainerDTO(
             container_id=container.container_id,
             label=container.label,
@@ -935,12 +985,16 @@ class CompanySimulationService:
             fill_level_m3=round(container.fill_level_m3, 2),
             fill_ratio=round(fill_ratio, 3),
             rental_cost_per_cycle_eur=container.rental_cost_per_cycle_eur,
-            early_empty_cost_eur=container.early_empty_cost_eur,
+            base_early_empty_cost_eur=container.base_early_empty_cost_eur,
+            early_empty_cost_eur=dynamic_cost,
             emptying_interval_hours=container.emptying_interval_hours,
+            hours_to_next_empty=round(hours_to_next_empty, 1),
             next_empty_at=isoformat(container.next_empty_at) or "",
             last_emptied_at=isoformat(container.last_emptied_at) or "",
             is_rented_extra=container.is_rented_extra,
             overflowed=container.overflowed,
+            overflow_penalty_eur=self.cost_policy.overflow_penalty_eur,
+            at_risk=fill_ratio >= 0.75,
         )
 
     def _profit(self) -> float:
@@ -1173,6 +1227,9 @@ class CompanySimulationService:
             "accounts_receivable_eur": self.accounts_receivable_eur,
             "accounts_payable_eur": self.accounts_payable_eur,
             "overflow_count": self.overflow_count,
+            "overflow_prevented_count": self.overflow_prevented_count,
+            "overflow_penalty_avoided_eur": self.overflow_penalty_avoided_eur,
+            "proactive_early_empty_cost_eur": self.proactive_early_empty_cost_eur,
             "bankruptcy_count": self.bankruptcy_count,
             "receivables": [entry.model_dump(mode="json") for entry in self.receivables],
             "payables": [entry.model_dump(mode="json") for entry in self.payables],
@@ -1232,6 +1289,9 @@ class CompanySimulationService:
             self.accounts_receivable_eur = payload.get("accounts_receivable_eur", 0.0)
             self.accounts_payable_eur = payload.get("accounts_payable_eur", 0.0)
             self.overflow_count = payload.get("overflow_count", 0)
+            self.overflow_prevented_count = payload.get("overflow_prevented_count", 0)
+            self.overflow_penalty_avoided_eur = payload.get("overflow_penalty_avoided_eur", 0.0)
+            self.proactive_early_empty_cost_eur = payload.get("proactive_early_empty_cost_eur", 0.0)
             self.bankruptcy_count = payload.get("bankruptcy_count", 0)
             self.receivables = [
                 ReceivableEntry.model_validate(entry_payload)

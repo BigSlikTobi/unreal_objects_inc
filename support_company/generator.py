@@ -152,7 +152,7 @@ def generate_initial_containers(seed: int = 42, now: datetime | None = None) -> 
                 capacity_m3=capacity,
                 fill_level_m3=fill,
                 rental_cost_per_cycle_eur=rental,
-                early_empty_cost_eur=early_empty,
+                base_early_empty_cost_eur=early_empty,
                 emptying_interval_hours=interval,
                 last_emptied_at=current - timedelta(hours=rng.randint(3, max(4, interval - 2))),
                 next_empty_at=current + timedelta(hours=rng.randint(1, max(2, interval))),

@@ -129,7 +129,7 @@ class WasteContainer(BaseModel):
     capacity_m3: float = Field(gt=0)
     fill_level_m3: float = Field(ge=0)
     rental_cost_per_cycle_eur: float = Field(ge=0)
-    early_empty_cost_eur: float = Field(ge=0)
+    base_early_empty_cost_eur: float = Field(ge=0)
     emptying_interval_hours: int = Field(gt=0)
     next_empty_at: datetime
     last_emptied_at: datetime
