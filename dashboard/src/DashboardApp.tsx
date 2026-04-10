@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BanknoteArrowDown, Bot, CircleHelp, Grid2x2, LayoutDashboard, MessagesSquare, MoonStar, Recycle, ShieldCheck, SunMedium, TimerReset } from 'lucide-react';
+import { BanknoteArrowDown, Bot, CircleHelp, Grid2x2, LayoutDashboard, MessagesSquare, MoonStar, Recycle, SunMedium, TimerReset } from 'lucide-react';
 import { fetchApprovals, fetchClock, fetchContainers, fetchEconomics, fetchOrders, fetchPricing, fetchRules, fetchStatus, finalizeApproval, voteOnApproval } from './api';
 import { usePolling } from './hooks/usePolling';
 import { ApprovalQueue } from './components/ApprovalQueue';
 import { KpiStrip } from './components/KpiStrip';
 import { CaseFeed } from './components/CaseFeed';
 import { BotActivity } from './components/BotActivity';
-import { RulesPanel } from './components/RulesPanel';
 import { DecisionOutcomes } from './components/DecisionOutcomes';
 import { ContainerFleet } from './components/ContainerFleet';
 import { EconomicsPanel } from './components/EconomicsPanel';
@@ -38,7 +37,6 @@ type DashboardView =
   | 'containers'
   | 'pricing'
   | 'bot'
-  | 'guardrails'
   | 'performance'
   | 'systems'
   | 'vision';
@@ -69,10 +67,6 @@ const VIEW_META: Record<DashboardView, { title: string; description: string }> =
   bot: {
     title: 'Bot Activity',
     description: 'How the external bot is engaging orders and how guardrails shape outcomes.',
-  },
-  guardrails: {
-    title: 'Guardrails',
-    description: 'Live groups and rules mirrored from Unreal Objects.',
   },
   performance: {
     title: 'Performance',
@@ -199,14 +193,6 @@ export function DashboardApp() {
       );
     }
 
-    if (activeView === 'guardrails') {
-      return (
-        <div className="console-view-stack">
-          <RulesPanel rules={allRules} groups={rules.data?.groups ?? []} />
-        </div>
-      );
-    }
-
     if (activeView === 'performance') {
       return <PerformanceView orders={allOrders} economics={economics.data} containers={allContainers} />;
     }
@@ -306,10 +292,6 @@ export function DashboardApp() {
               <button type="button" className={`rail-link ${activeView === 'bot' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('bot')}>
                 <Bot className="h-4 w-4 rail-link-icon" />
                 <div className="rail-link-copy"><span className="rail-link-label">Bot Activity</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'guardrails' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('guardrails')}>
-                <ShieldCheck className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Guardrails</span></div>
               </button>
             </nav>
           </div>
