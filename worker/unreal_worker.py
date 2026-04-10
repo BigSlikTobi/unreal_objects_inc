@@ -359,6 +359,33 @@ def log(tag, msg):
     ts = time.strftime("%H:%M:%S")
     print(f"[{ts}] {tag}: {msg}", flush=True)
 
+def trigger_early_empty(container_id):
+    """Call the standalone early-empty endpoint on the company API."""
+    return http_json(
+        f"{COMPANY_BASE}/api/v1/containers/{container_id}/early-empty",
+        method="POST",
+        data={"bot_id": BOT_ID},
+    )
+
+
+def manage_containers(containers):
+    """Proactively empty containers when it's cheaper than risking overflow."""
+    for c in containers:
+        fill_ratio = c.get("fill_ratio", 0)
+        early_cost = c.get("early_empty_cost_eur", 999)
+        penalty = c.get("overflow_penalty_eur", 350)
+
+        # Expected-value optimization: empty if cost < penalty * fill_ratio
+        expected_penalty = penalty * fill_ratio
+
+        if early_cost < expected_penalty and fill_ratio > 0.5:
+            try:
+                trigger_early_empty(c["container_id"])
+                log("EMPTY", f"{c['label']} emptied (fill: {fill_ratio:.0%}, cost: €{early_cost:.0f} vs penalty: €{penalty:.0f})")
+            except Exception as e:
+                log("ERR", f"Early empty {c['label']}: {e}")
+
+
 def wait_for_services():
     """Block until the company API and decision center are reachable."""
     log("WAIT", "Waiting for company API and decision center...")
@@ -394,6 +421,11 @@ def run():
     with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
         while True:
             try:
+                containers = fetch_containers()
+
+                # Proactive container management — run before orders
+                manage_containers(containers)
+
                 orders = fetch_open_orders()
                 if not orders:
                     time.sleep(POLL_INTERVAL)
@@ -401,6 +433,7 @@ def run():
 
                 # Rank and take a batch
                 batch = rank_orders(orders)[:BATCH_SIZE]
+                # Re-fetch containers after proactive empties
                 containers = fetch_containers()
 
                 log("BATCH", f"{len(batch)} orders (of {len(orders)} open)")

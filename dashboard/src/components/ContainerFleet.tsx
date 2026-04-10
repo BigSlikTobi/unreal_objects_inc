@@ -48,7 +48,9 @@ export function ContainerFleet({ containers }: Props) {
             <div className="mt-3 flex flex-wrap gap-2">
               {container.is_rented_extra && <span className="ghost-pill">Extra Capacity</span>}
               {container.overflowed && <span className="status-chip status-rejected">Overflowed</span>}
+              {container.at_risk && !container.overflowed && <span className="status-chip status-pending">At Risk</span>}
               <span className="ghost-pill">€{container.rental_cost_per_cycle_eur.toFixed(0)}/exchange</span>
+              <span className="ghost-pill">€{container.early_empty_cost_eur.toFixed(0)} early-empty</span>
             </div>
           </div>
         ))}

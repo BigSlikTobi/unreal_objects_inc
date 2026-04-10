@@ -123,4 +123,4 @@ def test_owned_fleet_costs_stay_below_emergency_overflow_actions():
         assert emergency_exchange_costs
         assert emergency_early_empty_costs
         assert container.rental_cost_per_cycle_eur < min(emergency_exchange_costs)
-        assert container.early_empty_cost_eur <= min(emergency_early_empty_costs)
+        assert container.base_early_empty_cost_eur <= min(emergency_early_empty_costs)

@@ -157,6 +157,15 @@ def build_app(
         current_containers = await service.get_containers()
         return {"containers": current_containers, "total": len(current_containers)}
 
+    @app.post("/api/v1/containers/{container_id}/early-empty")
+    async def early_empty_container(container_id: str, payload: OrderClaimRequest):
+        try:
+            return await service.early_empty_container(container_id=container_id, bot_id=payload.bot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Container not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/v1/economics")
     async def economics():
         return await service.get_economics()

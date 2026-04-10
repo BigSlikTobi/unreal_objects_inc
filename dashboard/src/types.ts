@@ -21,6 +21,7 @@ export interface CompanyStatus {
     active_containers: number;
     rented_extra_containers: number;
     overflow_count: number;
+    overflow_prevented_count: number;
     bankruptcy_count: number;
   };
 }
@@ -103,12 +104,16 @@ export interface ContainerDTO {
   fill_level_m3: number;
   fill_ratio: number;
   rental_cost_per_cycle_eur: number;
+  base_early_empty_cost_eur: number;
   early_empty_cost_eur: number;
   emptying_interval_hours: number;
+  hours_to_next_empty: number;
   next_empty_at: string;
   last_emptied_at: string;
   is_rented_extra: boolean;
   overflowed: boolean;
+  overflow_penalty_eur: number;
+  at_risk: boolean;
 }
 
 export interface ContainersResponse {
@@ -135,6 +140,9 @@ export interface EconomicsSnapshot {
   approval_locked_revenue_eur: number;
   profit_eur: number;
   overflow_count: number;
+  overflow_prevented_count: number;
+  overflow_penalty_avoided_eur: number;
+  proactive_early_empty_cost_eur: number;
   bankruptcy_count: number;
   current_run_id: number;
 }

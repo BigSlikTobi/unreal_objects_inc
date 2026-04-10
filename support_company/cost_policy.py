@@ -65,9 +65,9 @@ DEFAULT_SERVICE_WINDOW_COST_MULTIPLIER = {
 }
 
 DEFAULT_PAYMENT_DELAY_HOURS = {
-    ServiceWindow.SAME_DAY.value: 48,
-    ServiceWindow.NEXT_DAY.value: 72,
-    ServiceWindow.SCHEDULED.value: 96,
+    ServiceWindow.SAME_DAY.value: 6,
+    ServiceWindow.NEXT_DAY.value: 18,
+    ServiceWindow.SCHEDULED.value: 30,
 }
 
 DEFAULT_VENDOR_PAYMENT_DELAY_HOURS = {
@@ -272,6 +272,37 @@ def estimate_vendor_payment_delay_hours(
 
 def bankruptcy_threshold_eur(*, policy: CostPolicy) -> float:
     return -policy.bankruptcy_burn_multiple * policy.daily_overhead_eur
+
+
+def compute_dynamic_early_empty_cost(
+    *,
+    base_cost: float,
+    fill_ratio: float,
+    hours_to_pickup: float,
+    overflow_penalty_eur: float,
+) -> float:
+    """Compute dynamic early-empty cost based on container state.
+
+    Low fill → expensive (wasteful to empty), high fill → discounted (prevent overflow).
+    Near scheduled pickup → expensive (just wait), far from pickup → cheaper.
+    Cost is capped at the overflow penalty so it's always rational to empty vs overflow.
+    """
+    # Fill urgency: 1.0 at 0% fill → 0.5 at 100% fill
+    fill_factor = 1.0 - (fill_ratio * 0.5)
+
+    # Pickup proximity: expensive if pickup is soon, cheaper if far away
+    proximity_factor = max(0.3, 1.0 - (hours_to_pickup / 48))
+
+    # Overflow risk: heavy discount when overflow is imminent
+    overflow_discount = 1.0
+    if fill_ratio >= 0.9:
+        overflow_discount = 0.3
+    elif fill_ratio >= 0.75:
+        overflow_discount = 0.6
+
+    dynamic_cost = base_cost * fill_factor * proximity_factor * overflow_discount
+    # Cap at overflow penalty so emptying is always cheaper than overflowing
+    return round(max(min(dynamic_cost, overflow_penalty_eur * 0.9), 5.0), 2)
 
 
 def project_order_economics(
