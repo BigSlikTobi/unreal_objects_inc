@@ -1,7 +1,7 @@
 # Changelog — 2026-04-12
 
 ## Summary
-Major economics and container-management session. Payment timing was fixed to ensure the simulation stays solvent, proactive container management was added with full governance integration, and the dashboard and CLI were cleaned up and made more configurable.
+Major economics and container-management session. Payment timing was fixed to ensure the simulation stays solvent, proactive container management was added with dynamic pricing, and the dashboard and CLI were cleaned up and made more configurable.
 
 ## Changes
 
@@ -10,7 +10,7 @@ Major economics and container-management session. Payment timing was fixed to en
 
 ### Proactive container management (PR #4)
 - Renamed `WasteContainer.early_empty_cost_eur` → `base_early_empty_cost_eur` to make room for dynamic pricing.
-- Added `compute_dynamic_early_empty_cost()`: cost rises as fill_ratio climbs toward overflow, applying economic pressure to act early.
+- Added `compute_dynamic_early_empty_cost()`: high fill = cheaper (discounted to incentivize prevention), near scheduled pickup = expensive (just wait).
 - New standalone endpoint `POST /api/v1/containers/{id}/early-empty` so the worker can trigger empties independently of an order.
 - Worker now scans all containers each cycle and applies expected-value logic: empty proactively when `early_cost < penalty * fill_ratio` and `fill_ratio > 0.5`.
 - Economics tracking: `overflow_prevented_count` and `overflow_penalty_avoided_eur` added to the economics model.
