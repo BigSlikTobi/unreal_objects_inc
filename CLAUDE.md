@@ -35,6 +35,9 @@ Dashboard (dashboard/ :5174) ← polls /api/v1/* ← CompanyAPI
 
 `DisposalOrder` is the central Pydantic model — fields include `declared_waste_type` (6 waste types), `quantity_m3`, `offered_price_eur`, `priority` (standard/urgent), `service_window` (same_day/next_day/scheduled), `hazardous_flag`, `contamination_risk`. The `to_evaluation_context()` method converts it to the flat dict expected by `POST /v1/decide`.
 
+`WasteContainer` tracks the physical fleet. Key fields: `base_early_empty_cost_eur` (static base cost, renamed from `early_empty_cost_eur`), `overflow_penalty_eur` (capped penalty for overflowing), `fill_ratio`. Use `compute_dynamic_early_empty_cost(*, base_cost, fill_ratio, hours_to_pickup, overflow_penalty_eur)` to get the fill-adjusted cost (high fill = cheaper to incentivize prevention). Standalone emptying: `POST /api/v1/containers/{id}/early-empty` with body `{"bot_id": "..."}`.
+
+
 `GeneratedScenario` bundles an order with its operational context, source event, expected bot action (`BotActionType`), and expected governance outcome (`ExpectedPath`: APPROVE/ASK_FOR_APPROVAL/REJECT).
 
 ### Scenario Generation Modes
@@ -71,7 +74,7 @@ Tests use `pytest-asyncio` (auto mode) and `pytest-httpx` for HTTP mocking. Conf
 uo-company-server --acceleration 10 --no-ai   # runs on :8010
 ```
 
-The `--no-ai` flag uses template-only generation (no OpenAI key needed). `--acceleration` controls virtual clock speed.
+The `--no-ai` flag uses template-only generation (no OpenAI key needed). `--acceleration` controls virtual clock speed. `--order-interval` sets real-time seconds between generated orders (default: 60).
 
 ### Backend Services (Unreal Objects submodule)
 
@@ -124,3 +127,5 @@ See `docs/deployment-railway.md` for the full step-by-step guide and `railway.to
 - **Company API serves dashboard**: When `dashboard/dist/` exists, the FastAPI app mounts it as a catch-all SPA route, enabling single-process deployment.
 - **One-port-per-Railway-service constraint**: The reason Rule Engine and Decision Center are split into separate Railway services is that Railway only exposes one port per service, and the admin UI needs browser access to both.
 - **Split Railway projects**: The Unreal Objects infrastructure (Rule Engine, Decision Center, MCP, UI) deploys from the `unreal_objects` repo into its own Railway project. This repo only deploys the company simulation, which connects to those services via public HTTPS URLs.
+- **Production branch**: Railway deploys from the `production` branch of this repo, not `main`. PRs for Railway releases target `production`; feature work merges to `main` first.
+- **Proactive container management**: The worker applies expected-value logic each cycle (`early_cost < penalty * fill_ratio`). Governance routing through Decision Center is planned but not yet merged — currently the worker triggers early-empties directly.
