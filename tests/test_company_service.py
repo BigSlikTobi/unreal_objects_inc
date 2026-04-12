@@ -600,7 +600,7 @@ async def test_finalize_approval_approved_routes_order(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_get_approvals_remains_available_while_finalize_waits_on_unreal_objects(monkeypatch):
+async def test_finalize_applies_locally_before_notifying_decision_center(monkeypatch):
     service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
@@ -616,26 +616,52 @@ async def test_get_approvals_remains_available_while_finalize_waits_on_unreal_ob
         request_id="req-7b",
     )
 
-    release_submit = asyncio.Event()
+    dc_called = False
 
-    async def slow_submit(request_id: str, approved: bool, approver: str) -> None:
-        assert request_id == "req-7b"
-        assert approved is True
-        assert approver == "alice"
-        await release_submit.wait()
+    async def failing_submit(request_id: str, approved: bool, approver: str) -> None:
+        nonlocal dc_called
+        dc_called = True
+        raise Exception("Decision Center unavailable")
 
-    monkeypatch.setattr(service, "_submit_unreal_objects_approval", slow_submit)
+    monkeypatch.setattr(service, "_submit_unreal_objects_approval", failing_submit)
 
-    finalize_task = asyncio.create_task(
-        service.finalize_approval("req-7b", approved=True, reviewer="alice", rationale="Looks good.")
+    result = await service.finalize_approval("req-7b", approved=True, reviewer="alice", rationale="Looks good.")
+
+    # Local state is updated even though DC call failed
+    assert result.final_state == BotDecisionOutcome.APPROVED.value
+    assert dc_called is True
+    approvals = await service.get_approvals()
+    assert len(approvals) == 0  # no longer blocked
+
+
+@pytest.mark.asyncio
+async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-7c", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=150.0))
+    await service.claim_order("order-7c", bot_id="bot-alpha")
+    await service.submit_order_result(
+        order_id="order-7c",
+        bot_id="bot-alpha",
+        outcome=BotDecisionOutcome.APPROVAL_REQUIRED,
+        bot_action="accept_and_route",
+        action_payload={},  # empty — no target_container_id
+        decision_summary="Needs approval.",
+        request_id="req-7c",
     )
-    await asyncio.sleep(0)
 
-    approvals = await asyncio.wait_for(service.get_approvals(), timeout=0.1)
-    release_submit.set()
-    await finalize_task
+    async def noop_submit(request_id: str, approved: bool, approver: str) -> None:
+        pass
 
-    assert approvals[0].request_id == "req-7b"
+    monkeypatch.setattr(service, "_submit_unreal_objects_approval", noop_submit)
+
+    result = await service.finalize_approval("req-7c", approved=True, reviewer="alice")
+
+    # Should not crash — order rejected gracefully
+    orders = await service.get_orders()
+    order = next(o for o in orders if o.order_id == "order-7c")
+    assert order.status == "rejected"
+    assert "did not specify a target container" in order.resolution
 
 
 @pytest.mark.asyncio

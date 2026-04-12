@@ -368,20 +368,47 @@ def trigger_early_empty(container_id):
     )
 
 
-def manage_containers(containers):
+def manage_containers(containers, group_id):
     """Proactively empty containers when it's cheaper than risking overflow."""
     for c in containers:
         fill_ratio = c.get("fill_ratio", 0)
         early_cost = c.get("early_empty_cost_eur", 999)
         penalty = c.get("overflow_penalty_eur", 350)
+        hours_to_next_empty = c.get("hours_to_next_empty", 0)
 
         # Expected-value optimization: empty if cost < penalty * fill_ratio
         expected_penalty = penalty * fill_ratio
 
         if early_cost < expected_penalty and fill_ratio > 0.5:
+            # Build guardrail context and evaluate via Decision Center
+            ctx = {
+                "bot_action": "schedule_early_empty",
+                "overflow_prevention": True,
+                "container_id": c["container_id"],
+                "container_label": c["label"],
+                "waste_type": c["waste_type"],
+                "fill_ratio": fill_ratio,
+                "early_empty_cost_eur": early_cost,
+                "overflow_penalty_eur": penalty,
+                "hours_to_next_empty": hours_to_next_empty,
+            }
+            desc = (
+                f"Proactive early-empty for {c['label']} "
+                f"(fill: {fill_ratio:.0%}, cost: €{early_cost:.0f}, "
+                f"next pickup in {hours_to_next_empty:.0f}h)"
+            )
             try:
-                trigger_early_empty(c["container_id"])
-                log("EMPTY", f"{c['label']} emptied (fill: {fill_ratio:.0%}, cost: €{early_cost:.0f} vs penalty: €{penalty:.0f})")
+                eval_result = evaluate_action(desc, ctx, group_id)
+                outcome = eval_result.get("outcome", "ASK_FOR_APPROVAL")
+
+                if outcome in ("APPROVE", "APPROVED"):
+                    trigger_early_empty(c["container_id"])
+                    log("EMPTY", f"{c['label']} emptied (fill: {fill_ratio:.0%}, cost: €{early_cost:.0f} vs penalty: €{penalty:.0f})")
+                elif outcome in ("REJECT", "REJECTED"):
+                    reasoning = _format_guardrail_reasoning(eval_result)
+                    log("SKIP", f"{c['label']} early-empty rejected by guardrails: {reasoning}")
+                else:
+                    log("HOLD", f"{c['label']} early-empty needs approval (fill: {fill_ratio:.0%})")
             except Exception as e:
                 log("ERR", f"Early empty {c['label']}: {e}")
 
@@ -424,7 +451,7 @@ def run():
                 containers = fetch_containers()
 
                 # Proactive container management — run before orders
-                manage_containers(containers)
+                manage_containers(containers, group_id)
 
                 orders = fetch_open_orders()
                 if not orders:
