@@ -343,7 +343,12 @@ def process_order(order, containers, group_id):
 
     action, desc, ctx, action_payload = decide_action(order, containers)
 
-    eval_result = evaluate_action(desc, ctx, group_id)
+    # Merge server-provided baseline economics into the guardrail context
+    # so rules that check margin/cost fields have actual values (not None).
+    base_ctx = order.get("guardrail_context_base", {})
+    merged_ctx = {**base_ctx, **ctx}
+
+    eval_result = evaluate_action(desc, merged_ctx, group_id)
     outcome = eval_result.get("outcome", "ASK_FOR_APPROVAL")
 
     result_payload = build_result(outcome, action, eval_result, action_payload, order)
