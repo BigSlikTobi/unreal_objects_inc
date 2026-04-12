@@ -645,12 +645,9 @@ class CompanySimulationService:
             return item
 
     async def finalize_approval(self, request_id: str, approved: bool, reviewer: str, rationale: str | None = None) -> ApprovalFinalizeResponse:
-        async with self._lock:
-            self._refresh_runtime_locked(self._virtual_now())
-            self._require_blocked_record_by_request_id(request_id)
-
-        await self._submit_unreal_objects_approval(request_id=request_id, approved=approved, approver=reviewer)
-
+        # Apply locally first, then notify Decision Center.
+        # This prevents the state where DC resolves but the local apply crashes,
+        # leaving the approval permanently stuck (DC returns 409 on retries).
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
             record = self._require_blocked_record_by_request_id(request_id)
@@ -662,7 +659,7 @@ class CompanySimulationService:
                 decided_at=isoformat(self._virtual_now()) or "",
             )
             if approved:
-                self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload)
+                self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload or {})
                 record.dto.decision_outcome = BotDecisionOutcome.APPROVED.value
                 if rationale:
                     record.dto.resolution = rationale
@@ -674,12 +671,20 @@ class CompanySimulationService:
                 record.dto.resolution = rationale or "Operator rejected the pending approval request."
                 final_state = BotDecisionOutcome.REJECTED.value
             await self._persist_state_locked()
-            return ApprovalFinalizeResponse(
-                request_id=request_id,
-                order_id=record.dto.order_id,
-                status=record.dto.status,
-                final_state=final_state,
-            )
+
+        # Notify Decision Center after local state is committed.
+        # If this fails (409, timeout, etc.) the local state is already correct.
+        try:
+            await self._submit_unreal_objects_approval(request_id=request_id, approved=approved, approver=reviewer)
+        except Exception:
+            pass
+
+        return ApprovalFinalizeResponse(
+            request_id=request_id,
+            order_id=record.dto.order_id,
+            status=record.dto.status,
+            final_state=final_state,
+        )
 
     async def _refresh_live_rule_catalog(self) -> None:
         try:
@@ -821,6 +826,10 @@ class CompanySimulationService:
             return
 
         if bot_action == "accept_and_route":
+            if not payload.get("target_container_id"):
+                dto.status = OrderStatus.REJECTED.value
+                dto.resolution = "Approval failed: bot did not specify a target container."
+                return
             container = self._require_container(payload.get("target_container_id"))
             quantity = float(payload.get("route_quantity_m3", order.quantity_m3))
             self._route_into_container(container, order, quantity)
@@ -862,6 +871,10 @@ class CompanySimulationService:
             return
 
         if bot_action == "schedule_early_empty":
+            if not payload.get("target_container_id"):
+                dto.status = OrderStatus.REJECTED.value
+                dto.resolution = "Approval failed: bot did not specify a target container for early empty."
+                return
             container = self._require_container(payload.get("target_container_id"))
             fill_ratio = container.fill_level_m3 / container.capacity_m3 if container.capacity_m3 > 0 else 0.0
             hours_to_pickup = max(0.0, (container.next_empty_at - now).total_seconds() / 3600)
@@ -1200,13 +1213,20 @@ class CompanySimulationService:
         headers = {}
         if self.internal_api_key:
             headers["X-Internal-Key"] = self.internal_api_key
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.post(
-                f"{self.decision_center_url}/v1/decide/{request_id}/approve",
-                json={"approved": approved, "approver": approver},
-                headers=headers,
-            )
-            response.raise_for_status()
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.decision_center_url}/v1/decide/{request_id}/approve",
+                    json={"approved": approved, "approver": approver},
+                    headers=headers,
+                )
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 409:
+                # Decision Center already processed or expired this request —
+                # proceed with the local approval/rejection anyway.
+                return
+            raise
 
     async def _persist_state(self) -> None:
         async with self._lock:
