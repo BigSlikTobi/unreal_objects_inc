@@ -410,108 +410,6 @@ async def test_order_views_expose_baseline_context_and_server_side_projection():
 
 
 @pytest.mark.asyncio
-async def test_live_rule_group_refreshes_rules_from_unreal_objects(monkeypatch):
-    service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
-        initial_order_count=0,
-        rule_group_id="grp-live",
-    )
-
-    async def fake_fetch(group_id: str) -> dict:
-        assert group_id == "grp-live"
-        return {
-            "id": "grp-live",
-            "name": "Live Rules",
-            "description": "",
-            "rules": [
-                {
-                    "id": "rule-live-1",
-                    "name": "Live Capacity Rule",
-                    "feature": "capacity",
-                    "active": True,
-                    "datapoints": ["available_capacity_m3"],
-                    "edge_cases": [],
-                    "edge_cases_json": [],
-                    "rule_logic": "IF available_capacity_m3 < 1 THEN REJECT",
-                    "rule_logic_json": {"if": [{ "<": [{"var": "available_capacity_m3"}, 1]}, "REJECT", None]},
-                }
-            ],
-        }
-
-    monkeypatch.setattr(service, "_fetch_live_rule_group", fake_fetch)
-
-    async def fake_groups() -> list[dict]:
-        return [await fake_fetch("grp-live")]
-
-    monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
-
-    await service.initialize()
-    rules = await service.get_rules()
-
-    assert rules.group_id == "grp-live"
-    assert len(rules.rules) == 1
-    assert rules.rules[0].name == "Live Capacity Rule"
-    assert rules.groups[0].id == "grp-live"
-
-
-@pytest.mark.asyncio
-async def test_live_rule_catalog_lists_all_groups_without_pinned_group(monkeypatch):
-    service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
-        initial_order_count=0,
-    )
-
-    async def fake_groups() -> list[dict]:
-        return [
-            {
-                "id": "grp-one",
-                "name": "Operations",
-                "description": "",
-                "rules": [
-                    {
-                        "id": "rule-1",
-                        "name": "Capacity Guard",
-                        "feature": "capacity",
-                        "active": True,
-                        "datapoints": ["available_capacity_m3"],
-                        "edge_cases": [],
-                        "edge_cases_json": [],
-                        "rule_logic": "IF available_capacity_m3 < 1 THEN REJECT",
-                        "rule_logic_json": {"if": [{ "<": [{"var": "available_capacity_m3"}, 1]}, "REJECT", None]},
-                    }
-                ],
-            },
-            {
-                "id": "grp-two",
-                "name": "Economics",
-                "description": "",
-                "rules": [
-                    {
-                        "id": "rule-2",
-                        "name": "Loss Guard",
-                        "feature": "economics",
-                        "active": True,
-                        "datapoints": ["offered_price_eur"],
-                        "edge_cases": [],
-                        "edge_cases_json": [],
-                        "rule_logic": "IF offered_price_eur < 10 THEN REJECT",
-                        "rule_logic_json": {"if": [{ "<": [{"var": "offered_price_eur"}, 10]}, "REJECT", None]},
-                    }
-                ],
-            },
-        ]
-
-    monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
-
-    await service.initialize()
-    rules = await service.get_rules()
-
-    assert rules.group_id is None
-    assert {group.id for group in rules.groups} == {"grp-one", "grp-two"}
-    assert {rule.group_name for rule in rules.rules} == {"Operations", "Economics"}
-
-
-@pytest.mark.asyncio
 async def test_hosted_mode_status_exposes_capabilities():
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
@@ -665,7 +563,7 @@ async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_persistence_restores_runtime_state(tmp_path, monkeypatch):
+async def test_persistence_restores_runtime_state(tmp_path):
     persistence_path = tmp_path / "company-state.json"
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
@@ -691,11 +589,6 @@ async def test_persistence_restores_runtime_state(tmp_path, monkeypatch):
         initial_order_count=0,
         persistence_path=persistence_path,
     )
-
-    async def no_live_groups() -> list[dict]:
-        raise RuntimeError("offline")
-
-    monkeypatch.setattr(restored, "_fetch_live_rule_groups", no_live_groups)
 
     await restored.initialize()
     approvals = await restored.get_approvals()
@@ -787,3 +680,99 @@ async def test_bankruptcy_reset_clears_prevention_counters():
     assert service.overflow_prevented_count == 0
     assert service.overflow_penalty_avoided_eur == 0.0
     assert service.proactive_early_empty_cost_eur == 0.0
+
+
+@pytest.mark.asyncio
+async def test_release_order_returns_to_open():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release"))
+    await service.claim_order("order-release", bot_id="bot-alpha")
+
+    result = await service.release_order("order-release", bot_id="bot-alpha")
+
+    assert result.released is True
+    assert result.status == OrderStatus.OPEN.value
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.OPEN.value
+    assert orders[0].assigned_to is None
+
+
+@pytest.mark.asyncio
+async def test_release_order_rejects_wrong_bot():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release-wrong"))
+    await service.claim_order("order-release-wrong", bot_id="bot-alpha")
+
+    with pytest.raises(ValueError, match="not assigned to"):
+        await service.release_order("order-release-wrong", bot_id="bot-beta")
+
+
+@pytest.mark.asyncio
+async def test_release_order_rejects_non_claimed():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release-open"))
+
+    with pytest.raises(ValueError, match="not claimed"):
+        await service.release_order("order-release-open", bot_id="bot-alpha")
+
+
+@pytest.mark.asyncio
+async def test_claim_expiry_releases_stale_claims():
+    service = CompanySimulationService(
+        rule_pack_path=Path("rule_packs/support_company.json"),
+        initial_order_count=0,
+        claim_expiry_seconds=1,
+    )
+    await service.initialize()
+    await service.ingest_order(make_order("order-expire"))
+    await service.claim_order("order-expire", bot_id="bot-alpha")
+
+    assert (await service.get_orders())[0].status == OrderStatus.CLAIMED.value
+
+    # Simulate time passing beyond the expiry threshold
+    from company_api.service import utcnow
+    service.claimed_at["order-expire"] = utcnow() - timedelta(seconds=2)
+
+    # Trigger maintenance expiry (under the lock, as in production)
+    async with service._lock:
+        service._expire_stale_claims_locked()
+
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.OPEN.value
+    assert orders[0].assigned_to is None
+    assert "order-expire" not in service.claimed_at
+
+
+@pytest.mark.asyncio
+async def test_claim_expiry_does_not_release_fresh_claims():
+    service = CompanySimulationService(
+        rule_pack_path=Path("rule_packs/support_company.json"),
+        initial_order_count=0,
+        claim_expiry_seconds=120,
+    )
+    await service.initialize()
+    await service.ingest_order(make_order("order-fresh"))
+    await service.claim_order("order-fresh", bot_id="bot-alpha")
+
+    async with service._lock:
+        service._expire_stale_claims_locked()
+
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.CLAIMED.value
+
+
+@pytest.mark.asyncio
+async def test_released_order_can_be_reclaimed():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-reclaim"))
+    await service.claim_order("order-reclaim", bot_id="bot-alpha")
+    await service.release_order("order-reclaim", bot_id="bot-alpha")
+
+    claim = await service.claim_order("order-reclaim", bot_id="bot-beta")
+
+    assert claim.status == OrderStatus.CLAIMED.value
+    assert claim.assigned_to == "bot-beta"

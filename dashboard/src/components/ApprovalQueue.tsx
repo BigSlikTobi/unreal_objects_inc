@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import type { ApprovalItemDTO, CompanyStatus, RuleDTO } from '../types';
+import type { ApprovalItemDTO, CompanyStatus } from '../types';
 import { OrderEconomicsPanel } from './OrderEconomicsPanel';
 
 const VOTE_COOLDOWN_MS = 5_000;
 
 interface Props {
   approvals: ApprovalItemDTO[];
-  rules?: RuleDTO[];
   status: CompanyStatus | null;
   onVote: (requestId: string, approved: boolean) => Promise<void>;
   onFinalize: (requestId: string, approved: boolean, reviewer: string, rationale?: string | null, operatorToken?: string) => Promise<void>;
@@ -24,7 +23,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function ApprovalQueue({ approvals, rules = [], status, onVote, onFinalize, mode = 'queue', onOpenAll }: Props) {
+export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'queue', onOpenAll }: Props) {
   const [operatorToken, setOperatorToken] = useState(() => localStorage.getItem('uo_operator_token') ?? '');
   const [reviewer, setReviewer] = useState(() => localStorage.getItem('uo_operator_reviewer') ?? 'operator');
   const [finalizeBusyId, setFinalizeBusyId] = useState<string | null>(null);
@@ -59,8 +58,7 @@ export function ApprovalQueue({ approvals, rules = [], status, onVote, onFinaliz
   }
 
   function resolveMatchedRules(ruleRefs: string[]): string[] {
-    const byId = new Map(rules.map((rule) => [rule.id, rule.name]));
-    return ruleRefs.map((ruleRef) => byId.get(ruleRef) ?? ruleRef);
+    return ruleRefs;
   }
 
   const selectedApproval = selectedApprovalId ? visibleApprovals.find((approval) => approval.request_id === selectedApprovalId) ?? null : null;

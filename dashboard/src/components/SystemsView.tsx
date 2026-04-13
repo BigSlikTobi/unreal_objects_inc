@@ -4,17 +4,14 @@ interface Props {
   apiHealthy: boolean;
   botConnected: boolean;
   status: CompanyStatus | null;
-  rulesCount: number;
   pricing: PricingCatalogResponse | null;
 }
 
-export function SystemsView({ apiHealthy, botConnected, status, rulesCount, pricing }: Props) {
+export function SystemsView({ apiHealthy, botConnected, status, pricing }: Props) {
   const systemRows = [
     { label: 'Company API', value: apiHealthy ? 'Online' : 'Offline', state: apiHealthy ? 'healthy' : 'idle' },
     { label: 'External Bot', value: botConnected ? 'Connected' : 'Offline', state: botConnected ? 'healthy' : 'idle' },
     { label: 'Deployment', value: status?.deployment_mode ?? 'local', state: 'info' },
-    { label: 'Rule Group', value: status?.group_id ?? 'Auto-discovered', state: 'info' },
-    { label: 'Rulebook', value: `${rulesCount} active rules`, state: 'info' },
     { label: 'Pricing Catalog', value: `${(pricing?.market_quotes.length ?? 0) + (pricing?.operational_options.length ?? 0)} entries`, state: 'info' },
     { label: 'Persistence', value: status?.persistence_backend ?? 'memory', state: 'info' },
     { label: 'Current Run', value: `#${status?.current_run_id ?? 1}`, state: 'healthy' },

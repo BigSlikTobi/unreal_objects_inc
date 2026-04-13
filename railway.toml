@@ -1,10 +1,15 @@
 # Railway deployment configuration
 #
-# This project deploys as a single service (+ 1 local agent):
+# This project deploys two services (+ 1 local agent):
 #
 #   CLOUD (Railway — athletic-spirit project)
 #   ─────────────────────────────────────────
-#   1. company  — Company API + Dashboard (public, Dockerfile.company)
+#   1. company    — Simulation API (Dockerfile.company.api, port 8010)
+#                   Volume "company-volume" mounted at /data
+#                   PERSISTENCE_PATH=/data/state.json
+#
+#   2. dashboard  — Static React UI (Dockerfile.dashboard, port 80)
+#                   Build var: VITE_API_BASE=https://unrealobjectsinc.up.railway.app/api/v1
 #
 #   EXTERNAL (Railway — unreal_objects project, deployed separately)
 #   ────────────────────────────────────────────────────────────────
@@ -14,19 +19,32 @@
 #   ──────────────────────────────────
 #   worker  — Autonomous bot agent (worker/unreal_worker.py)
 #
+# ── Build configuration ──────────────────────────────────────────
+#
+# After connecting each service to this GitHub repo in the Railway UI,
+# set the Dockerfile path per service:
+#   company   → Dockerfile.company.api
+#   dashboard → Dockerfile.dashboard
+#
 # ── Environment Variables ────────────────────────────────────────
 #
 # [company]
 #   DEPLOYMENT_MODE=hosted
 #   GENERATOR_MODE=template
-#   ACCELERATION=10
+#   ACCELERATION=2
 #   RULE_ENGINE_URL=https://ruleengine-production-d6fe.up.railway.app
 #   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
 #   INTERNAL_API_KEY=<shared-secret matching unreal_objects project>
 #   ENVIRONMENT=production
+#   PERSISTENCE_PATH=/data/state.json   ← Volume "company-volume" mounted at /data
+#   OPERATOR_AUTH=true
+#   OPERATOR_TOKEN=<secret>
+#
+# [dashboard]
+#   VITE_API_BASE=https://unrealobjectsinc.up.railway.app/api/v1
 #
 # [local worker — NOT on Railway]
-#   COMPANY_API_URL=https://unrealobjectsinc-production.up.railway.app
+#   COMPANY_API_URL=https://unrealobjectsinc.up.railway.app
 #   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
 #   BOT_ID=deborahbot3000
 #   POLL_INTERVAL=5

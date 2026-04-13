@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BanknoteArrowDown, Bot, CircleHelp, Grid2x2, LayoutDashboard, MessagesSquare, MoonStar, Recycle, SunMedium, TimerReset } from 'lucide-react';
-import { fetchApprovals, fetchClock, fetchContainers, fetchEconomics, fetchOrders, fetchPricing, fetchRules, fetchStatus, finalizeApproval, voteOnApproval } from './api';
+import { fetchApprovals, fetchClock, fetchContainers, fetchEconomics, fetchOrders, fetchPricing, fetchStatus, finalizeApproval, voteOnApproval } from './api';
 import { usePolling } from './hooks/usePolling';
 import { ApprovalQueue } from './components/ApprovalQueue';
 import { KpiStrip } from './components/KpiStrip';
@@ -99,7 +99,6 @@ export function DashboardApp() {
   const clockFetcher = useCallback(() => fetchClock(), []);
   const statusFetcher = useCallback(() => fetchStatus(), []);
   const ordersFetcher = useCallback(() => fetchOrders(), []);
-  const rulesFetcher = useCallback(() => fetchRules(), []);
   const containersFetcher = useCallback(() => fetchContainers(), []);
   const economicsFetcher = useCallback(() => fetchEconomics(), []);
   const pricingFetcher = useCallback(() => fetchPricing(), []);
@@ -108,7 +107,6 @@ export function DashboardApp() {
   const clock = usePolling(clockFetcher, 2000);
   const status = usePolling(statusFetcher, 5000);
   const orders = usePolling(ordersFetcher, 5000);
-  const rules = usePolling(rulesFetcher, 30000);
   const containers = usePolling(containersFetcher, 5000);
   const economics = usePolling(economicsFetcher, 5000);
   const pricing = usePolling(pricingFetcher, 30000);
@@ -117,7 +115,6 @@ export function DashboardApp() {
   const apiHealthy = !clock.error && !status.error;
   const botConnected = status.data?.bot_connected ?? false;
   const allOrders = orders.data?.orders ?? [];
-  const allRules = rules.data?.rules ?? [];
   const allContainers = containers.data?.containers ?? [];
   const allApprovals = approvals.data?.approvals ?? [];
   const currentView = VIEW_META[activeView];
@@ -159,7 +156,6 @@ export function DashboardApp() {
         <div className="console-view-stack">
           <ApprovalQueue
             approvals={allApprovals}
-            rules={allRules}
             status={status.data}
             onVote={handleApprovalVote}
             onFinalize={handleApprovalFinalize}
@@ -203,7 +199,6 @@ export function DashboardApp() {
           apiHealthy={apiHealthy}
           botConnected={botConnected}
           status={status.data}
-          rulesCount={allRules.length}
           pricing={pricing.data}
         />
       );
@@ -218,7 +213,6 @@ export function DashboardApp() {
         <KpiStrip
           status={status.data}
           economics={economics.data}
-          rulesCount={allRules.length}
           pricingReferenceCount={(pricing.data?.market_quotes.length ?? 0) + (pricing.data?.operational_options.length ?? 0)}
         />
         {claimedOrders > 0 && (
@@ -247,7 +241,6 @@ export function DashboardApp() {
         </div>
         <ApprovalQueue
           approvals={allApprovals}
-          rules={allRules}
           status={status.data}
           onVote={handleApprovalVote}
           onFinalize={handleApprovalFinalize}
