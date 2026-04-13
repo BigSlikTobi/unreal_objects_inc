@@ -40,7 +40,6 @@ class CompanyStatus(BaseModel):
     virtual_time: str | None
     current_run_started_at: str | None = None
     acceleration: int | None
-    group_id: str | None
     deployment_mode: str = "local"
     public_voting_enabled: bool = False
     operator_auth_enabled: bool = False
@@ -237,33 +236,6 @@ class EventsResponse(BaseModel):
     total: int
 
 
-class RuleDTO(BaseModel):
-    id: str
-    group_id: str | None = None
-    group_name: str | None = None
-    name: str
-    feature: str
-    active: bool
-    datapoints: list[str]
-    edge_cases: list[str]
-    edge_cases_json: list[dict]
-    rule_logic: str
-    rule_logic_json: dict
-
-
-class RuleGroupDTO(BaseModel):
-    id: str
-    name: str
-    description: str = ""
-    rule_count: int
-
-
-class RulesResponse(BaseModel):
-    rules: list[RuleDTO]
-    group_id: str | None
-    groups: list[RuleGroupDTO] = Field(default_factory=list)
-
-
 class MarketPriceOptionDTO(BaseModel):
     option_id: str
     waste_type: str
@@ -353,6 +325,16 @@ class ApprovalFinalizeResponse(BaseModel):
 
 class OrderClaimRequest(BaseModel):
     bot_id: str
+
+
+class OrderReleaseRequest(BaseModel):
+    bot_id: str
+
+
+class OrderReleaseResponse(BaseModel):
+    order_id: str
+    status: str
+    released: bool
 
 
 class OrderClaimResponse(BaseModel):

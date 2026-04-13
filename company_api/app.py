@@ -22,6 +22,8 @@ from .models import (
     DisposalOrderWebhookPayload,
     EventsResponse,
     OrderClaimRequest,
+    OrderReleaseRequest,
+    OrderReleaseResponse,
     OrderResultSubmission,
     OrdersResponse,
     PricingCatalogResponse,
@@ -38,9 +40,7 @@ def build_app(
     acceleration: int = DEFAULT_ACCELERATION,
     order_interval: float = DEFAULT_ORDER_INTERVAL_REAL_SECONDS,
     generator_mode: str = "mixed",
-    rule_engine_url: str = "http://127.0.0.1:8001",
     decision_center_url: str = "http://127.0.0.1:8002",
-    rule_group_id: str | None = None,
     llm_model: str = DEFAULT_LLM_MODEL,
     llm_api_key: str | None = None,
     allow_template_fallback: bool = True,
@@ -60,9 +60,7 @@ def build_app(
         acceleration=acceleration,
         order_interval=order_interval,
         generator_mode=generator_mode,
-        rule_engine_url=rule_engine_url,
         decision_center_url=decision_center_url,
-        rule_group_id=rule_group_id,
         llm_model=llm_model,
         llm_api_key=llm_api_key,
         allow_template_fallback=allow_template_fallback,
@@ -135,6 +133,15 @@ def build_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/v1/orders/{order_id}/release", response_model=OrderReleaseResponse)
+    async def release_order(order_id: str, payload: OrderReleaseRequest):
+        try:
+            return await service.release_order(order_id=order_id, bot_id=payload.bot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Order not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.post("/api/v1/orders/{order_id}/result")
     async def submit_order_result(order_id: str, payload: OrderResultSubmission):
         try:
@@ -171,10 +178,6 @@ def build_app(
     @app.get("/api/v1/economics")
     async def economics():
         return await service.get_economics()
-
-    @app.get("/api/v1/rules")
-    async def rules():
-        return await service.get_rules()
 
     @app.get("/api/v1/pricing", response_model=PricingCatalogResponse)
     async def pricing(waste_type: str | None = None):

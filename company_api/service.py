@@ -58,9 +58,6 @@ from .models import (
     ProjectedActionEconomicsDTO,
     ReceivableEntry,
     PricingCatalogResponse,
-    RuleDTO,
-    RuleGroupDTO,
-    RulesResponse,
     WasteEventDTO,
 )
 
@@ -94,9 +91,7 @@ class CompanySimulationService:
         acceleration: int = DEFAULT_ACCELERATION,
         order_interval: float = DEFAULT_ORDER_INTERVAL_REAL_SECONDS,
         generator_mode: str = "mixed",
-        rule_engine_url: str = "http://127.0.0.1:8001",
         decision_center_url: str = "http://127.0.0.1:8002",
-        rule_group_id: str | None = None,
         llm_model: str = DEFAULT_LLM_MODEL,
         llm_api_key: str | None = None,
         allow_template_fallback: bool = True,
@@ -107,6 +102,7 @@ class CompanySimulationService:
         internal_api_key: str | None = None,
         persistence_path: str | Path | None = None,
         bot_connection_timeout_seconds: int = 120,
+        claim_expiry_seconds: int = 120,
         cost_policy_path: str | Path | None = None,
     ):
         self.rule_pack_path = Path(rule_pack_path)
@@ -116,10 +112,8 @@ class CompanySimulationService:
         self.acceleration = acceleration
         self.order_interval = order_interval
         self.generator_mode = generator_mode
-        self.rule_engine_url = rule_engine_url.rstrip("/")
         self.decision_center_url = decision_center_url.rstrip("/")
         self.internal_api_key = internal_api_key
-        self.rule_group_id = rule_group_id
         self.llm_model = llm_model
         self.llm_api_key = llm_api_key
         self.allow_template_fallback = allow_template_fallback
@@ -134,9 +128,6 @@ class CompanySimulationService:
         self.continuous_mode = initial_order_count is None
         self.bounded_rolling_mode = rolling_generation and initial_order_count is not None and initial_order_count > 0
 
-        self.group_id: str | None = None
-        self.rules: list[RuleDTO] = []
-        self.rule_groups: list[RuleGroupDTO] = []
         self.records: dict[str, OrderRecord] = {}
         self.source_orders: dict[str, DisposalOrder] = {}
         self.source_events: dict[str, CompanyEvent] = {}
@@ -153,6 +144,8 @@ class CompanySimulationService:
         self._arrival_rng = random.Random(seed + 91_337)
         self.bot_identity: str | None = None
         self.bot_last_seen_at: datetime | None = None
+        self.claimed_at: dict[str, datetime] = {}
+        self.claim_expiry_seconds: int = claim_expiry_seconds
 
         self.invoiced_revenue_eur = 0.0
         self.revenue_eur = 0.0
@@ -176,14 +169,6 @@ class CompanySimulationService:
         self._maintenance_task: asyncio.Task | None = None
 
     async def initialize(self) -> None:
-        pack = json.loads(self.rule_pack_path.read_text())
-        self.rules = self._map_rules(pack["rules"])
-        self.group_id = self.rule_group_id
-        self.rule_groups = []
-        if self.rule_group_id:
-            await self._refresh_live_rules()
-        else:
-            await self._refresh_live_rule_catalog()
         restored = await self._load_persisted_state()
         if not restored:
             await self._reset_live_company_state(seed_offset=0)
@@ -194,24 +179,6 @@ class CompanySimulationService:
             initial_count = self.initial_order_count if self.initial_order_count is not None else CONTINUOUS_BOOTSTRAP_ORDERS
         if not restored and initial_count > 0:
             await self._seed_orders(initial_count)
-
-    def _map_rules(self, raw_rules: list[dict], group_id: str | None = None, group_name: str | None = None) -> list[RuleDTO]:
-        return [
-            RuleDTO(
-                id=rule.get("id", f"rule-{idx + 1}"),
-                group_id=group_id,
-                group_name=group_name,
-                name=rule["name"],
-                feature=rule["feature"],
-                active=rule["active"],
-                datapoints=rule.get("datapoints", []),
-                edge_cases=rule.get("edge_cases", []),
-                edge_cases_json=rule.get("edge_cases_json", []),
-                rule_logic=rule["rule_logic"],
-                rule_logic_json=rule["rule_logic_json"],
-            )
-            for idx, rule in enumerate(raw_rules)
-        ]
 
     async def start(self) -> None:
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
@@ -418,12 +385,36 @@ class CompanySimulationService:
                 raise ValueError(f"Order {order_id} is not open")
             record.dto.status = OrderStatus.CLAIMED.value
             record.dto.assigned_to = bot_id
+            self.claimed_at[order_id] = utcnow()
             self._mark_bot_seen(bot_id)
             response = OrderClaimResponse(
                 order_id=order_id,
                 status=record.dto.status,
                 assigned_to=bot_id,
                 order=self._to_bot_inbox_order(record),
+            )
+        await self._persist_state()
+        return response
+
+    async def release_order(self, order_id: str, bot_id: str) -> "OrderReleaseResponse":
+        from .models import OrderReleaseResponse
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self.records.get(order_id)
+            if record is None:
+                raise KeyError(order_id)
+            if record.dto.status != OrderStatus.CLAIMED.value:
+                raise ValueError(f"Order {order_id} is not claimed (status: {record.dto.status})")
+            if record.dto.assigned_to != bot_id:
+                raise ValueError(f"Order {order_id} is not assigned to {bot_id}")
+            record.dto.status = OrderStatus.OPEN.value
+            record.dto.assigned_to = None
+            self.claimed_at.pop(order_id, None)
+            self._mark_bot_seen(bot_id)
+            response = OrderReleaseResponse(
+                order_id=order_id,
+                status=record.dto.status,
+                released=True,
             )
         await self._persist_state()
         return response
@@ -449,11 +440,14 @@ class CompanySimulationService:
                 raise KeyError(order_id)
             if record.dto.status not in {OrderStatus.OPEN.value, OrderStatus.CLAIMED.value, OrderStatus.BLOCKED.value}:
                 raise ValueError(f"Order {order_id} cannot accept a bot result from status {record.dto.status}")
+            if record.dto.assigned_to is not None and record.dto.assigned_to != bot_id:
+                raise ValueError(f"Order {order_id} is assigned to {record.dto.assigned_to}, not {bot_id}")
             order = self.source_orders[order_id]
 
             record.dto.assigned_to = bot_id
             record.dto.request_id = request_id
             record.dto.matched_rules = matched
+            self.claimed_at.pop(order_id, None)
             record.dto.decision_outcome = outcome.value
             record.dto.decision_summary = decision_summary
             record.dto.bot_action = bot_action
@@ -506,7 +500,6 @@ class CompanySimulationService:
             virtual_time=isoformat(self._virtual_now()),
             current_run_started_at=isoformat(self._current_run_started_at),
             acceleration=self.acceleration,
-            group_id=self.group_id,
             deployment_mode=self.deployment_mode,
             public_voting_enabled=self.public_voting_enabled,
             operator_auth_enabled=self.operator_auth_enabled,
@@ -590,10 +583,6 @@ class CompanySimulationService:
                 bankruptcy_count=self.bankruptcy_count,
                 current_run_id=self._current_run_id,
             )
-
-    async def get_rules(self) -> RulesResponse:
-        await self._refresh_live_rule_catalog()
-        return RulesResponse(rules=self.rules, group_id=self.group_id, groups=self.rule_groups)
 
     async def get_pricing(self, waste_type: str | None = None) -> PricingCatalogResponse:
         return PricingCatalogResponse(
@@ -686,67 +675,6 @@ class CompanySimulationService:
             final_state=final_state,
         )
 
-    async def _refresh_live_rule_catalog(self) -> None:
-        try:
-            groups = await self._fetch_live_rule_groups()
-        except Exception:
-            return
-        self.rule_groups = [
-            RuleGroupDTO(
-                id=group["id"],
-                name=group["name"],
-                description=group.get("description", ""),
-                rule_count=len(group.get("rules", [])),
-            )
-            for group in groups
-        ]
-        if self.rule_group_id:
-            await self._refresh_live_rules(groups=groups)
-            return
-
-        live_rules: list[RuleDTO] = []
-        for group in groups:
-            live_rules.extend(
-                self._map_rules(
-                    group.get("rules", []),
-                    group_id=group.get("id"),
-                    group_name=group.get("name"),
-                )
-            )
-        if live_rules:
-            self.rules = live_rules
-            self.group_id = None
-
-    async def _refresh_live_rules(self, groups: list[dict] | None = None) -> None:
-        if not self.rule_group_id:
-            return
-        payload: dict | None = None
-        if groups is not None:
-            payload = next((group for group in groups if group.get("id") == self.rule_group_id), None)
-        if payload is None:
-            try:
-                payload = await self._fetch_live_rule_group(self.rule_group_id)
-            except Exception:
-                return
-        self.group_id = payload.get("id", self.rule_group_id)
-        self.rules = self._map_rules(
-            payload.get("rules", []),
-            group_id=payload.get("id", self.rule_group_id),
-            group_name=payload.get("name"),
-        )
-
-    async def _fetch_live_rule_group(self, group_id: str) -> dict:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{self.rule_engine_url}/v1/groups/{group_id}")
-            response.raise_for_status()
-            return response.json()
-
-    async def _fetch_live_rule_groups(self) -> list[dict]:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{self.rule_engine_url}/v1/groups")
-            response.raise_for_status()
-            return response.json()
-
     async def _seed_orders(self, count: int) -> None:
         scenarios = generate_scenarios(
             ScenarioGenerationConfig(
@@ -781,7 +709,23 @@ class CompanySimulationService:
             await asyncio.sleep(max(1.0, 60 / max(self.acceleration, 1)))
             async with self._lock:
                 self._refresh_runtime_locked(self._virtual_now())
+                self._expire_stale_claims_locked()
                 await self._persist_state_locked()
+
+    def _expire_stale_claims_locked(self) -> None:
+        """Release orders stuck in 'claimed' status beyond the expiry threshold."""
+        now = utcnow()
+        expired_ids = [
+            order_id
+            for order_id, claimed_time in self.claimed_at.items()
+            if (now - claimed_time).total_seconds() > self.claim_expiry_seconds
+        ]
+        for order_id in expired_ids:
+            record = self.records.get(order_id)
+            if record is not None and record.dto.status == OrderStatus.CLAIMED.value:
+                record.dto.status = OrderStatus.OPEN.value
+                record.dto.assigned_to = None
+            self.claimed_at.pop(order_id, None)
 
     async def _reset_live_company_state(self, seed_offset: int) -> None:
         async with self._lock:
@@ -797,6 +741,7 @@ class CompanySimulationService:
             }
             self.approval_votes = {}
             self.final_decisions = {}
+            self.claimed_at = {}
             self.bot_identity = None
             self.bot_last_seen_at = None
             self.receivables = []
@@ -1270,6 +1215,7 @@ class CompanySimulationService:
             "containers": {container_id: container.model_dump(mode="json") for container_id, container in self.containers.items()},
             "approval_votes": {request_id: state.model_dump(mode="json") for request_id, state in self.approval_votes.items()},
             "final_decisions": {request_id: state.model_dump(mode="json") for request_id, state in self.final_decisions.items()},
+            "claimed_at": {order_id: isoformat(ts) for order_id, ts in self.claimed_at.items()},
         }
         self.persistence_path.write_text(json.dumps(snapshot, indent=2))
 
@@ -1355,5 +1301,9 @@ class CompanySimulationService:
             self.final_decisions = {
                 request_id: ApprovalDecisionMetadata.model_validate(state_payload)
                 for request_id, state_payload in payload.get("final_decisions", {}).items()
+            }
+            self.claimed_at = {
+                order_id: datetime.fromisoformat(ts)
+                for order_id, ts in payload.get("claimed_at", {}).items()
             }
         return True
