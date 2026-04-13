@@ -34,7 +34,6 @@ from .service import DEFAULT_ACCELERATION, DEFAULT_ORDER_INTERVAL_REAL_SECONDS
 
 
 def build_app(
-    rule_pack_path: str | Path,
     initial_order_count: int | None = 24,
     rolling_generation: bool = False,
     seed: int = 42,
@@ -54,7 +53,6 @@ def build_app(
     cost_policy_path: str | Path | None = None,
 ) -> FastAPI:
     service = CompanySimulationService(
-        rule_pack_path=rule_pack_path,
         initial_order_count=initial_order_count,
         rolling_generation=rolling_generation,
         seed=seed,
