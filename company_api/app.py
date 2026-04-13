@@ -22,6 +22,7 @@ from .models import (
     DisposalOrderWebhookPayload,
     EventsResponse,
     OrderClaimRequest,
+    OrderReleaseRequest,
     OrderResultSubmission,
     OrdersResponse,
     PricingCatalogResponse,
@@ -130,6 +131,15 @@ def build_app(
     async def claim_order(order_id: str, payload: OrderClaimRequest):
         try:
             return await service.claim_order(order_id=order_id, bot_id=payload.bot_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Order not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/orders/{order_id}/release")
+    async def release_order(order_id: str, payload: OrderReleaseRequest):
+        try:
+            return await service.release_order(order_id=order_id, bot_id=payload.bot_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="Order not found") from exc
         except ValueError as exc:

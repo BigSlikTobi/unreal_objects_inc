@@ -787,3 +787,97 @@ async def test_bankruptcy_reset_clears_prevention_counters():
     assert service.overflow_prevented_count == 0
     assert service.overflow_penalty_avoided_eur == 0.0
     assert service.proactive_early_empty_cost_eur == 0.0
+
+
+@pytest.mark.asyncio
+async def test_release_order_returns_to_open():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release"))
+    await service.claim_order("order-release", bot_id="bot-alpha")
+
+    result = await service.release_order("order-release", bot_id="bot-alpha")
+
+    assert result["released"] is True
+    assert result["status"] == OrderStatus.OPEN.value
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.OPEN.value
+    assert orders[0].assigned_to is None
+
+
+@pytest.mark.asyncio
+async def test_release_order_rejects_wrong_bot():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release-wrong"))
+    await service.claim_order("order-release-wrong", bot_id="bot-alpha")
+
+    with pytest.raises(ValueError, match="not assigned to"):
+        await service.release_order("order-release-wrong", bot_id="bot-beta")
+
+
+@pytest.mark.asyncio
+async def test_release_order_rejects_non_claimed():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-release-open"))
+
+    with pytest.raises(ValueError, match="not claimed"):
+        await service.release_order("order-release-open", bot_id="bot-alpha")
+
+
+@pytest.mark.asyncio
+async def test_claim_expiry_releases_stale_claims():
+    service = CompanySimulationService(
+        rule_pack_path=Path("rule_packs/support_company.json"),
+        initial_order_count=0,
+        bot_connection_timeout_seconds=1,
+    )
+    await service.initialize()
+    await service.ingest_order(make_order("order-expire"))
+    await service.claim_order("order-expire", bot_id="bot-alpha")
+
+    assert (await service.get_orders())[0].status == OrderStatus.CLAIMED.value
+
+    # Simulate time passing beyond the expiry threshold
+    from company_api.service import utcnow
+    service.claimed_at["order-expire"] = utcnow() - timedelta(seconds=2)
+
+    # Trigger maintenance expiry
+    service._expire_stale_claims_locked()
+
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.OPEN.value
+    assert orders[0].assigned_to is None
+    assert "order-expire" not in service.claimed_at
+
+
+@pytest.mark.asyncio
+async def test_claim_expiry_does_not_release_fresh_claims():
+    service = CompanySimulationService(
+        rule_pack_path=Path("rule_packs/support_company.json"),
+        initial_order_count=0,
+        bot_connection_timeout_seconds=120,
+    )
+    await service.initialize()
+    await service.ingest_order(make_order("order-fresh"))
+    await service.claim_order("order-fresh", bot_id="bot-alpha")
+
+    service._expire_stale_claims_locked()
+
+    orders = await service.get_orders()
+    assert orders[0].status == OrderStatus.CLAIMED.value
+
+
+@pytest.mark.asyncio
+async def test_released_order_can_be_reclaimed():
+    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    await service.initialize()
+    await service.ingest_order(make_order("order-reclaim"))
+    await service.claim_order("order-reclaim", bot_id="bot-alpha")
+    await service.release_order("order-reclaim", bot_id="bot-alpha")
+
+    claim = await service.claim_order("order-reclaim", bot_id="bot-beta")
+
+    assert claim.status == OrderStatus.CLAIMED.value
+    assert claim.assigned_to == "bot-beta"

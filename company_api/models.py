@@ -355,6 +355,16 @@ class OrderClaimRequest(BaseModel):
     bot_id: str
 
 
+class OrderReleaseRequest(BaseModel):
+    bot_id: str
+
+
+class OrderReleaseResponse(BaseModel):
+    order_id: str
+    status: str
+    released: bool
+
+
 class OrderClaimResponse(BaseModel):
     order_id: str
     status: str

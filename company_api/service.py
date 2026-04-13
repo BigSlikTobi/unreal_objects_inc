@@ -153,6 +153,8 @@ class CompanySimulationService:
         self._arrival_rng = random.Random(seed + 91_337)
         self.bot_identity: str | None = None
         self.bot_last_seen_at: datetime | None = None
+        self.claimed_at: dict[str, datetime] = {}
+        self.claim_expiry_seconds: int = bot_connection_timeout_seconds
 
         self.invoiced_revenue_eur = 0.0
         self.revenue_eur = 0.0
@@ -418,6 +420,7 @@ class CompanySimulationService:
                 raise ValueError(f"Order {order_id} is not open")
             record.dto.status = OrderStatus.CLAIMED.value
             record.dto.assigned_to = bot_id
+            self.claimed_at[order_id] = utcnow()
             self._mark_bot_seen(bot_id)
             response = OrderClaimResponse(
                 order_id=order_id,
@@ -427,6 +430,27 @@ class CompanySimulationService:
             )
         await self._persist_state()
         return response
+
+    async def release_order(self, order_id: str, bot_id: str) -> dict:
+        from .models import OrderReleaseResponse
+        async with self._lock:
+            record = self.records.get(order_id)
+            if record is None:
+                raise KeyError(order_id)
+            if record.dto.status != OrderStatus.CLAIMED.value:
+                raise ValueError(f"Order {order_id} is not claimed (status: {record.dto.status})")
+            if record.dto.assigned_to != bot_id:
+                raise ValueError(f"Order {order_id} is not assigned to {bot_id}")
+            record.dto.status = OrderStatus.OPEN.value
+            record.dto.assigned_to = None
+            self.claimed_at.pop(order_id, None)
+            response = OrderReleaseResponse(
+                order_id=order_id,
+                status=record.dto.status,
+                released=True,
+            )
+        await self._persist_state()
+        return response.model_dump()
 
     async def submit_order_result(
         self,
@@ -454,6 +478,7 @@ class CompanySimulationService:
             record.dto.assigned_to = bot_id
             record.dto.request_id = request_id
             record.dto.matched_rules = matched
+            self.claimed_at.pop(order_id, None)
             record.dto.decision_outcome = outcome.value
             record.dto.decision_summary = decision_summary
             record.dto.bot_action = bot_action
@@ -781,7 +806,23 @@ class CompanySimulationService:
             await asyncio.sleep(max(1.0, 60 / max(self.acceleration, 1)))
             async with self._lock:
                 self._refresh_runtime_locked(self._virtual_now())
+                self._expire_stale_claims_locked()
                 await self._persist_state_locked()
+
+    def _expire_stale_claims_locked(self) -> None:
+        """Release orders stuck in 'claimed' status beyond the expiry threshold."""
+        now = utcnow()
+        expired_ids = [
+            order_id
+            for order_id, claimed_time in self.claimed_at.items()
+            if (now - claimed_time).total_seconds() > self.claim_expiry_seconds
+        ]
+        for order_id in expired_ids:
+            record = self.records.get(order_id)
+            if record is not None and record.dto.status == OrderStatus.CLAIMED.value:
+                record.dto.status = OrderStatus.OPEN.value
+                record.dto.assigned_to = None
+            self.claimed_at.pop(order_id, None)
 
     async def _reset_live_company_state(self, seed_offset: int) -> None:
         async with self._lock:
@@ -797,6 +838,7 @@ class CompanySimulationService:
             }
             self.approval_votes = {}
             self.final_decisions = {}
+            self.claimed_at = {}
             self.bot_identity = None
             self.bot_last_seen_at = None
             self.receivables = []
