@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
@@ -84,6 +85,13 @@ def build_app(
             await service.stop()
 
     app = FastAPI(title="Unreal Objects Inc Waste Company API", lifespan=lifespan)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type", "X-Operator-Token"],
+    )
 
     def require_operator(x_operator_token: str | None) -> None:
         if not service.operator_auth_enabled:
