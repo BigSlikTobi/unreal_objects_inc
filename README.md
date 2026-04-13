@@ -145,7 +145,7 @@ Rolling generation is now tied to simulated time instead of a fixed real-time bu
 
 By default, the company server will auto-discover live rule groups from Unreal Objects and mirror them in the dashboard when the Rule Engine is reachable.
 
-For mixed generation, put `OPENAI_API_KEY=...` in a local `.env` file or export it in your shell. The company server and batch runner default to `--generator-mode mixed` with `gpt-5.4-mini-2026-03-17`: part of the stream comes from the LLM and part comes from deterministic templates. If the LLM is unavailable, the missing share falls back to deterministic templates unless you disable fallback.
+For mixed generation, put `OPENAI_API_KEY=...` in a local `.env` file or export it in your shell. The company server defaults to `--generator-mode mixed` with `gpt-5.4-mini-2026-03-17`: part of the stream comes from the LLM and part comes from deterministic templates. If the LLM is unavailable, the missing share falls back to deterministic templates unless you disable fallback.
 
 At the default `24x` acceleration, `1` real hour equals `1` simulated day.
 

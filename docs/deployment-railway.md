@@ -65,18 +65,18 @@ Railway auto-deploys on push.
 
 ```bash
 # Company API health
-curl https://unrealobjectsinc-production.up.railway.app/v1/health
+curl https://unrealobjectsinc.up.railway.app/v1/health
 
 # Dashboard — open in browser
-open https://unrealobjectsinc-production.up.railway.app
+open https://dashboard-production-fcf4.up.railway.app
 ```
 
 ## Notes
 
 ### Rule Engine and Decision Center URLs
 
-If the unreal_objects services are redeployed with new domains, update `RULE_ENGINE_URL` and `DECISION_CENTER_URL` on the company service and trigger a redeploy.
+If the unreal_objects services are redeployed with new domains, update `DECISION_CENTER_URL` on the company service and trigger a redeploy.
 
 ### Cost
 
-A single Railway service is well within the free tier limits.
+Two lightweight Railway services (API + static dashboard) are well within the free tier limits.
