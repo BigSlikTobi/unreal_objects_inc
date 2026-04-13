@@ -237,33 +237,6 @@ class EventsResponse(BaseModel):
     total: int
 
 
-class RuleDTO(BaseModel):
-    id: str
-    group_id: str | None = None
-    group_name: str | None = None
-    name: str
-    feature: str
-    active: bool
-    datapoints: list[str]
-    edge_cases: list[str]
-    edge_cases_json: list[dict]
-    rule_logic: str
-    rule_logic_json: dict
-
-
-class RuleGroupDTO(BaseModel):
-    id: str
-    name: str
-    description: str = ""
-    rule_count: int
-
-
-class RulesResponse(BaseModel):
-    rules: list[RuleDTO]
-    group_id: str | None
-    groups: list[RuleGroupDTO] = Field(default_factory=list)
-
-
 class MarketPriceOptionDTO(BaseModel):
     option_id: str
     waste_type: str

@@ -410,105 +410,6 @@ async def test_order_views_expose_baseline_context_and_server_side_projection():
 
 
 @pytest.mark.asyncio
-async def test_live_rule_group_refreshes_rules_from_unreal_objects(monkeypatch):
-    service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
-        initial_order_count=0,
-        rule_group_id="grp-live",
-    )
-
-    async def fake_fetch(group_id: str) -> dict:
-        assert group_id == "grp-live"
-        return {
-            "id": "grp-live",
-            "name": "Live Rules",
-            "description": "",
-            "rules": [
-                {
-                    "id": "rule-live-1",
-                    "name": "Live Capacity Rule",
-                    "feature": "capacity",
-                    "active": True,
-                    "datapoints": ["available_capacity_m3"],
-                    "edge_cases": [],
-                    "edge_cases_json": [],
-                    "rule_logic": "IF available_capacity_m3 < 1 THEN REJECT",
-                    "rule_logic_json": {"if": [{ "<": [{"var": "available_capacity_m3"}, 1]}, "REJECT", None]},
-                }
-            ],
-        }
-
-    monkeypatch.setattr(service, "_fetch_live_rule_group", fake_fetch)
-
-    async def fake_groups() -> list[dict]:
-        return [await fake_fetch("grp-live")]
-
-    monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
-
-    await service.initialize()
-
-    assert service.group_id == "grp-live"
-    assert len(service.rules) == 1
-    assert service.rules[0].name == "Live Capacity Rule"
-
-
-@pytest.mark.asyncio
-async def test_live_rule_catalog_lists_all_groups_without_pinned_group(monkeypatch):
-    service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
-        initial_order_count=0,
-    )
-
-    async def fake_groups() -> list[dict]:
-        return [
-            {
-                "id": "grp-one",
-                "name": "Operations",
-                "description": "",
-                "rules": [
-                    {
-                        "id": "rule-1",
-                        "name": "Capacity Guard",
-                        "feature": "capacity",
-                        "active": True,
-                        "datapoints": ["available_capacity_m3"],
-                        "edge_cases": [],
-                        "edge_cases_json": [],
-                        "rule_logic": "IF available_capacity_m3 < 1 THEN REJECT",
-                        "rule_logic_json": {"if": [{ "<": [{"var": "available_capacity_m3"}, 1]}, "REJECT", None]},
-                    }
-                ],
-            },
-            {
-                "id": "grp-two",
-                "name": "Economics",
-                "description": "",
-                "rules": [
-                    {
-                        "id": "rule-2",
-                        "name": "Loss Guard",
-                        "feature": "economics",
-                        "active": True,
-                        "datapoints": ["offered_price_eur"],
-                        "edge_cases": [],
-                        "edge_cases_json": [],
-                        "rule_logic": "IF offered_price_eur < 10 THEN REJECT",
-                        "rule_logic_json": {"if": [{ "<": [{"var": "offered_price_eur"}, 10]}, "REJECT", None]},
-                    }
-                ],
-            },
-        ]
-
-    monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
-
-    await service.initialize()
-
-    assert service.group_id is None
-    assert {group.id for group in service.rule_groups} == {"grp-one", "grp-two"}
-    assert {rule.group_name for rule in service.rules} == {"Operations", "Economics"}
-
-
-@pytest.mark.asyncio
 async def test_hosted_mode_status_exposes_capabilities():
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
@@ -662,7 +563,7 @@ async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_persistence_restores_runtime_state(tmp_path, monkeypatch):
+async def test_persistence_restores_runtime_state(tmp_path):
     persistence_path = tmp_path / "company-state.json"
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
@@ -688,11 +589,6 @@ async def test_persistence_restores_runtime_state(tmp_path, monkeypatch):
         initial_order_count=0,
         persistence_path=persistence_path,
     )
-
-    async def no_live_groups() -> list[dict]:
-        raise RuntimeError("offline")
-
-    monkeypatch.setattr(restored, "_fetch_live_rule_groups", no_live_groups)
 
     await restored.initialize()
     approvals = await restored.get_approvals()

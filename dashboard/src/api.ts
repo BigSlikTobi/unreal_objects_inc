@@ -7,7 +7,6 @@ import type {
   EconomicsSnapshot,
   OrdersResponse,
   PricingCatalogResponse,
-  RulesResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE || '/api/v1';
@@ -28,7 +27,6 @@ export const fetchOrders = () => fetchJSON<OrdersResponse>('/dashboard/orders');
 export const fetchContainers = () => fetchJSON<ContainersResponse>('/containers');
 export const fetchEconomics = () => fetchJSON<EconomicsSnapshot>('/economics');
 export const fetchPricing = () => fetchJSON<PricingCatalogResponse>('/pricing');
-export const fetchRules = () => fetchJSON<RulesResponse>('/rules');
 export const fetchApprovals = () => fetchJSON<ApprovalsResponse>('/approvals');
 
 export async function voteOnApproval(requestId: string, approved: boolean): Promise<ApprovalItemDTO> {

@@ -58,8 +58,6 @@ from .models import (
     ProjectedActionEconomicsDTO,
     ReceivableEntry,
     PricingCatalogResponse,
-    RuleDTO,
-    RuleGroupDTO,
     WasteEventDTO,
 )
 
@@ -115,7 +113,6 @@ class CompanySimulationService:
         self.acceleration = acceleration
         self.order_interval = order_interval
         self.generator_mode = generator_mode
-        self.rule_engine_url = rule_engine_url.rstrip("/")
         self.decision_center_url = decision_center_url.rstrip("/")
         self.internal_api_key = internal_api_key
         self.rule_group_id = rule_group_id
@@ -134,8 +131,6 @@ class CompanySimulationService:
         self.bounded_rolling_mode = rolling_generation and initial_order_count is not None and initial_order_count > 0
 
         self.group_id: str | None = None
-        self.rules: list[RuleDTO] = []
-        self.rule_groups: list[RuleGroupDTO] = []
         self.records: dict[str, OrderRecord] = {}
         self.source_orders: dict[str, DisposalOrder] = {}
         self.source_events: dict[str, CompanyEvent] = {}
@@ -177,14 +172,7 @@ class CompanySimulationService:
         self._maintenance_task: asyncio.Task | None = None
 
     async def initialize(self) -> None:
-        pack = json.loads(self.rule_pack_path.read_text())
-        self.rules = self._map_rules(pack["rules"])
         self.group_id = self.rule_group_id
-        self.rule_groups = []
-        if self.rule_group_id:
-            await self._refresh_live_rules()
-        else:
-            await self._refresh_live_rule_catalog()
         restored = await self._load_persisted_state()
         if not restored:
             await self._reset_live_company_state(seed_offset=0)
@@ -195,24 +183,6 @@ class CompanySimulationService:
             initial_count = self.initial_order_count if self.initial_order_count is not None else CONTINUOUS_BOOTSTRAP_ORDERS
         if not restored and initial_count > 0:
             await self._seed_orders(initial_count)
-
-    def _map_rules(self, raw_rules: list[dict], group_id: str | None = None, group_name: str | None = None) -> list[RuleDTO]:
-        return [
-            RuleDTO(
-                id=rule.get("id", f"rule-{idx + 1}"),
-                group_id=group_id,
-                group_name=group_name,
-                name=rule["name"],
-                feature=rule["feature"],
-                active=rule["active"],
-                datapoints=rule.get("datapoints", []),
-                edge_cases=rule.get("edge_cases", []),
-                edge_cases_json=rule.get("edge_cases_json", []),
-                rule_logic=rule["rule_logic"],
-                rule_logic_json=rule["rule_logic_json"],
-            )
-            for idx, rule in enumerate(raw_rules)
-        ]
 
     async def start(self) -> None:
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
@@ -705,67 +675,6 @@ class CompanySimulationService:
             status=record.dto.status,
             final_state=final_state,
         )
-
-    async def _refresh_live_rule_catalog(self) -> None:
-        try:
-            groups = await self._fetch_live_rule_groups()
-        except Exception:
-            return
-        self.rule_groups = [
-            RuleGroupDTO(
-                id=group["id"],
-                name=group["name"],
-                description=group.get("description", ""),
-                rule_count=len(group.get("rules", [])),
-            )
-            for group in groups
-        ]
-        if self.rule_group_id:
-            await self._refresh_live_rules(groups=groups)
-            return
-
-        live_rules: list[RuleDTO] = []
-        for group in groups:
-            live_rules.extend(
-                self._map_rules(
-                    group.get("rules", []),
-                    group_id=group.get("id"),
-                    group_name=group.get("name"),
-                )
-            )
-        if live_rules:
-            self.rules = live_rules
-            self.group_id = None
-
-    async def _refresh_live_rules(self, groups: list[dict] | None = None) -> None:
-        if not self.rule_group_id:
-            return
-        payload: dict | None = None
-        if groups is not None:
-            payload = next((group for group in groups if group.get("id") == self.rule_group_id), None)
-        if payload is None:
-            try:
-                payload = await self._fetch_live_rule_group(self.rule_group_id)
-            except Exception:
-                return
-        self.group_id = payload.get("id", self.rule_group_id)
-        self.rules = self._map_rules(
-            payload.get("rules", []),
-            group_id=payload.get("id", self.rule_group_id),
-            group_name=payload.get("name"),
-        )
-
-    async def _fetch_live_rule_group(self, group_id: str) -> dict:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{self.rule_engine_url}/v1/groups/{group_id}")
-            response.raise_for_status()
-            return response.json()
-
-    async def _fetch_live_rule_groups(self) -> list[dict]:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.get(f"{self.rule_engine_url}/v1/groups")
-            response.raise_for_status()
-            return response.json()
 
     async def _seed_orders(self, count: int) -> None:
         scenarios = generate_scenarios(
