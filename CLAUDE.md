@@ -17,7 +17,7 @@ Generator (support_company/) → DisposalOrders → CompanyAPI (company_api/ :80
                                                         ↓
 Dashboard (dashboard/ :5174) ← polls /api/v1/* ← CompanyAPI
                                                         ↓
-                                    bot_adapter/ → POST /v1/decide → Decision Center (:8002)
+                                    External Bot → POST /v1/decide → Decision Center (:8002)
                                                                           ↓
                                                                    Rule Engine (:8001)
 ```
@@ -26,8 +26,6 @@ Dashboard (dashboard/ :5174) ← polls /api/v1/* ← CompanyAPI
 
 - **`support_company/`** — Domain models (`DisposalOrder`, `WasteContainer`, enums) and scenario generation (deterministic templates + optional LLM via OpenAI).
 - **`company_api/`** — FastAPI server (:8010) that runs the simulation. Manages virtual clock, order lifecycle, container fleet, economics, approvals, and pricing. Serves the dashboard static build at `/` if `dashboard/dist/` exists.
-- **`bot_adapter/`** — Maps bot actions to Unreal Objects evaluation requests. `GovernanceClient` calls `POST /v1/decide` on Decision Center. `rule_loader.py` uploads rule packs to Rule Engine.
-- **`stress_runner/`** — CLI batch runner (`uo-stress-company`) that generates N orders, evaluates them, and saves JSON reports to `reports/`.
 - **`dashboard/`** — Standalone Vite + React + TypeScript + Tailwind CSS 4 app. Polls company server via Vite dev proxy (`/api` → `localhost:8010`). In production, set `VITE_API_BASE`.
 - **`rule_packs/`** — JSON rule definitions loaded into Rule Engine at startup.
 
@@ -61,9 +59,6 @@ pytest -v                           # full suite
 pytest tests/test_generator.py -v   # single test file
 pytest -k "test_name" -v            # single test by name
 
-# Stress test CLI
-uo-stress-company --cases 50 --seed 42
-uo-stress-company --generator-mode template --cases 10  # no LLM needed
 ```
 
 Tests use `pytest-asyncio` (auto mode) and `pytest-httpx` for HTTP mocking. Config is in `pyproject.toml` under `[tool.pytest.ini_options]`.
@@ -104,17 +99,18 @@ Run in three terminals:
 The stack splits across two Railway projects:
 
 - **`unreal_objects` project** — Rule Engine, Decision Center, MCP, UI. Deployed directly from the [unreal_objects](https://github.com/BigSlikTobi/unreal_objects) repo.
-- **`unreal_objects_inc` project** — Single service:
+- **`unreal_objects_inc` project** — Two services:
 
 | Service | Dockerfile | Port | Public URL |
 |---------|-----------|------|------------|
-| `company` | `Dockerfile.company` | 8010 | `unrealobjectsinc-production.up.railway.app` |
+| `company` | `Dockerfile.company.api` | 8010 | `unrealobjectsinc.up.railway.app` |
+| `dashboard` | `Dockerfile.dashboard` | 8081 | `dashboard-production-fcf4.up.railway.app` |
 
 The company service connects to the external unreal_objects services via their public URLs:
 - Rule Engine: `https://ruleengine-production-d6fe.up.railway.app`
 - Decision Center: `https://decisioncenter-production-1c81.up.railway.app`
 
-**Bot worker** runs locally (e.g., Raspberry Pi) and is not deployed to Railway. Configure `COMPANY_API_URL` and `DECISION_CENTER_URL` env vars on the Pi pointing at the live Railway public URLs.
+The bot worker is developed and deployed from a separate repository. It connects to the company API and Decision Center via their public Railway URLs.
 
 See `docs/deployment-railway.md` for the full step-by-step guide and `railway.toml` for the complete env var matrix.
 
@@ -128,4 +124,4 @@ See `docs/deployment-railway.md` for the full step-by-step guide and `railway.to
 - **One-port-per-Railway-service constraint**: The reason Rule Engine and Decision Center are split into separate Railway services is that Railway only exposes one port per service, and the admin UI needs browser access to both.
 - **Split Railway projects**: The Unreal Objects infrastructure (Rule Engine, Decision Center, MCP, UI) deploys from the `unreal_objects` repo into its own Railway project. This repo only deploys the company simulation, which connects to those services via public HTTPS URLs.
 - **Production branch**: Railway deploys from the `production` branch of this repo, not `main`. PRs for Railway releases target `production`; feature work merges to `main` first.
-- **Proactive container management**: The worker applies expected-value logic each cycle (`early_cost < penalty * fill_ratio`). Governance routing through Decision Center is planned but not yet merged — currently the worker triggers early-empties directly.
+- **Bot lives in a separate repo**: The autonomous bot worker was extracted into its own repository to enforce the trust boundary — the bot is an independent agent and should not share a codebase with the company it operates against.

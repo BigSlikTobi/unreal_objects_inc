@@ -1,7 +1,6 @@
 import asyncio
 from datetime import timedelta
 import json
-from pathlib import Path
 
 import pytest
 
@@ -33,7 +32,7 @@ def make_order(order_id: str, waste_type: WasteType = WasteType.RECYCLING, quant
 
 @pytest.mark.asyncio
 async def test_external_bot_claims_order_without_internal_processing():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     first = make_order("order-1")
     await service.ingest_order(first)
@@ -52,7 +51,7 @@ async def test_external_bot_claims_order_without_internal_processing():
 
 @pytest.mark.asyncio
 async def test_bot_order_view_hides_internal_execution_metadata():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-2"))
 
@@ -67,7 +66,7 @@ async def test_bot_order_view_hides_internal_execution_metadata():
 
 @pytest.mark.asyncio
 async def test_accept_and_route_updates_revenue_and_container_fill():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     await service.ingest_order(make_order("order-3", waste_type=WasteType.RECYCLING, quantity_m3=2.5, price=210.0))
@@ -96,7 +95,7 @@ async def test_accept_and_route_updates_revenue_and_container_fill():
 
 @pytest.mark.asyncio
 async def test_overflow_increments_counter_and_penalty():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     container.fill_level_m3 = container.capacity_m3 - 0.5
@@ -119,7 +118,7 @@ async def test_overflow_increments_counter_and_penalty():
 
 @pytest.mark.asyncio
 async def test_bankruptcy_restarts_company_and_keeps_counter():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     before = await service.get_status()
     service.cash_balance_eur = service._bankruptcy_threshold_eur() - 50.0
@@ -134,7 +133,7 @@ async def test_bankruptcy_restarts_company_and_keeps_counter():
 
 @pytest.mark.asyncio
 async def test_bankruptcy_threshold_tracks_baseline_cycle_cost():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
 
     assert service._baseline_cycle_cost_eur() == 0.0
@@ -144,7 +143,7 @@ async def test_bankruptcy_threshold_tracks_baseline_cycle_cost():
 
 @pytest.mark.asyncio
 async def test_default_snapshot_starts_with_at_least_thirty_days_of_runway():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
 
     runway_days = (service.cash_balance_eur - service._bankruptcy_threshold_eur()) / service._daily_burn_eur()
@@ -154,7 +153,7 @@ async def test_default_snapshot_starts_with_at_least_thirty_days_of_runway():
 
 @pytest.mark.asyncio
 async def test_scheduled_emptying_records_pickup_exchange_cost_only_for_non_empty_containers():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
 
     non_empty = next(container for container in service.containers.values() if container.fill_level_m3 > 0.05)
@@ -174,7 +173,6 @@ async def test_scheduled_emptying_records_pickup_exchange_cost_only_for_non_empt
 @pytest.mark.asyncio
 async def test_service_start_generates_orders_in_continuous_mode():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=None,
         generator_mode="template",
     )
@@ -193,7 +191,6 @@ async def test_service_start_generates_orders_in_continuous_mode():
 @pytest.mark.asyncio
 async def test_bounded_rolling_mode_seeds_small_bootstrap_and_then_trickles_orders():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=5,
         rolling_generation=True,
         generator_mode="template",
@@ -215,7 +212,7 @@ async def test_bounded_rolling_mode_seeds_small_bootstrap_and_then_trickles_orde
 
 def test_generation_delay_stays_within_stress_window():
     from company_api.service import DEFAULT_ORDER_INTERVAL_REAL_SECONDS
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0, seed=42)
+    service = CompanySimulationService(initial_order_count=0, seed=42)
 
     samples = [service._next_generation_delay_seconds() for _ in range(20)]
 
@@ -227,7 +224,7 @@ def test_generation_delay_stays_within_stress_window():
 
 @pytest.mark.asyncio
 async def test_completed_order_creates_receivable_before_cash_collection():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     starting_cash = service.cash_balance_eur
@@ -252,7 +249,7 @@ async def test_completed_order_creates_receivable_before_cash_collection():
 
 @pytest.mark.asyncio
 async def test_cash_is_collected_after_payment_delay():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     await service.ingest_order(make_order("order-delay", waste_type=WasteType.RECYCLING, quantity_m3=1.0, price=120.0))
@@ -275,7 +272,7 @@ async def test_cash_is_collected_after_payment_delay():
 
 @pytest.mark.asyncio
 async def test_pricing_catalog_exposes_market_quotes_and_operational_options():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
 
     pricing = await service.get_pricing(waste_type=WasteType.PAPER.value)
@@ -306,7 +303,6 @@ async def test_custom_cost_policy_flows_into_pricing_and_economics(tmp_path):
         )
     )
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         cost_policy_path=policy_path,
     )
@@ -374,7 +370,7 @@ def test_hazardous_vendor_payment_delay_comes_from_policy(tmp_path):
 
 @pytest.mark.asyncio
 async def test_order_views_expose_baseline_context_and_server_side_projection():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     await service.ingest_order(make_order("order-proj", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=180.0))
@@ -412,7 +408,6 @@ async def test_order_views_expose_baseline_context_and_server_side_projection():
 @pytest.mark.asyncio
 async def test_hosted_mode_status_exposes_capabilities():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         deployment_mode="hosted",
         public_voting_enabled=True,
@@ -432,7 +427,6 @@ async def test_hosted_mode_status_exposes_capabilities():
 @pytest.mark.asyncio
 async def test_local_mode_enables_public_voting_by_default():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         deployment_mode="local",
     )
@@ -445,7 +439,7 @@ async def test_local_mode_enables_public_voting_by_default():
 
 @pytest.mark.asyncio
 async def test_public_vote_records_counts():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-6"))
     await service.claim_order("order-6", bot_id="bot-alpha")
@@ -467,7 +461,7 @@ async def test_public_vote_records_counts():
 
 @pytest.mark.asyncio
 async def test_finalize_approval_approved_routes_order(monkeypatch):
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     await service.ingest_order(make_order("order-7", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=150.0))
@@ -499,7 +493,7 @@ async def test_finalize_approval_approved_routes_order(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_finalize_applies_locally_before_notifying_decision_center(monkeypatch):
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
     await service.ingest_order(make_order("order-7b", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=150.0))
@@ -534,7 +528,7 @@ async def test_finalize_applies_locally_before_notifying_decision_center(monkeyp
 
 @pytest.mark.asyncio
 async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-7c", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=150.0))
     await service.claim_order("order-7c", bot_id="bot-alpha")
@@ -566,7 +560,6 @@ async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
 async def test_persistence_restores_runtime_state(tmp_path):
     persistence_path = tmp_path / "company-state.json"
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         persistence_path=persistence_path,
     )
@@ -585,7 +578,6 @@ async def test_persistence_restores_runtime_state(tmp_path):
     await service.record_public_vote("req-8", approved=False)
 
     restored = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         persistence_path=persistence_path,
     )
@@ -623,7 +615,7 @@ async def test_dynamic_cost_cheaper_near_overflow():
 
 @pytest.mark.asyncio
 async def test_standalone_early_empty_resets_container():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
     container.fill_level_m3 = container.capacity_m3 * 0.8
@@ -640,7 +632,7 @@ async def test_standalone_early_empty_resets_container():
 
 @pytest.mark.asyncio
 async def test_standalone_early_empty_on_empty_container_rejected():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
     container.fill_level_m3 = 0.0
@@ -651,7 +643,7 @@ async def test_standalone_early_empty_on_empty_container_rejected():
 
 @pytest.mark.asyncio
 async def test_economics_tracks_avoided_penalties():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
     container.fill_level_m3 = container.capacity_m3 * 0.85
@@ -666,7 +658,7 @@ async def test_economics_tracks_avoided_penalties():
 
 @pytest.mark.asyncio
 async def test_bankruptcy_reset_clears_prevention_counters():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     container = next(c for c in service.containers.values() if c.waste_type == WasteType.RECYCLING)
     container.fill_level_m3 = container.capacity_m3 * 0.9
@@ -684,7 +676,7 @@ async def test_bankruptcy_reset_clears_prevention_counters():
 
 @pytest.mark.asyncio
 async def test_release_order_returns_to_open():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-release"))
     await service.claim_order("order-release", bot_id="bot-alpha")
@@ -700,7 +692,7 @@ async def test_release_order_returns_to_open():
 
 @pytest.mark.asyncio
 async def test_release_order_rejects_wrong_bot():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-release-wrong"))
     await service.claim_order("order-release-wrong", bot_id="bot-alpha")
@@ -711,7 +703,7 @@ async def test_release_order_rejects_wrong_bot():
 
 @pytest.mark.asyncio
 async def test_release_order_rejects_non_claimed():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-release-open"))
 
@@ -722,7 +714,6 @@ async def test_release_order_rejects_non_claimed():
 @pytest.mark.asyncio
 async def test_claim_expiry_releases_stale_claims():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         claim_expiry_seconds=1,
     )
@@ -749,7 +740,6 @@ async def test_claim_expiry_releases_stale_claims():
 @pytest.mark.asyncio
 async def test_claim_expiry_does_not_release_fresh_claims():
     service = CompanySimulationService(
-        rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
         claim_expiry_seconds=120,
     )
@@ -766,7 +756,7 @@ async def test_claim_expiry_does_not_release_fresh_claims():
 
 @pytest.mark.asyncio
 async def test_released_order_can_be_reclaimed():
-    service = CompanySimulationService(rule_pack_path=Path("rule_packs/support_company.json"), initial_order_count=0)
+    service = CompanySimulationService(initial_order_count=0)
     await service.initialize()
     await service.ingest_order(make_order("order-reclaim"))
     await service.claim_order("order-reclaim", bot_id="bot-alpha")

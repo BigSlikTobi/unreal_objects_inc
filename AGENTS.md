@@ -23,8 +23,6 @@ The `unreal_objects/` directory is a git submodule. Treat it as an external, rea
 
 - `company_api/`: company-owned API server for dashboard data, bot processing, and the approval desk
 - `support_company/`: operations simulation, raw event generation, intake models, and domain models
-- `bot_adapter/`: maps company bot actions into Unreal Objects evaluation requests
-- `stress_runner/`: batch simulator and reporting tools
 - `rule_packs/`: JSON rule definitions loaded into Unreal Objects
 - `dashboard/`: standalone React + Vite + TypeScript + Tailwind UI for company operations
 - `scripts/`: shell helpers such as `start_full_stack.sh`
@@ -47,7 +45,6 @@ Requires Python 3.11+ and Node.js 18+.
 - `python3 -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"`: install the Python environment
 - `bash scripts/start_full_stack.sh`: start the Unreal Objects Rule Engine and Decision Center
 - `uo-company-server --cases 24 --seed 42 --acceleration 10`: start the simulated company API on port 8010
-- `uo-stress-company --cases 50 --seed 42`: run a batch company simulation and save a report
 - `pytest -v`: run the full test suite
 - `pytest tests/test_generator.py -v`: run support-case generator tests only
 - `pytest tests/test_company_service.py -v`: run approval-desk and company workflow tests
@@ -91,8 +88,7 @@ Prefer deterministic inputs like `seed=42` so failures are reproducible.
 If a change affects the Unreal Objects handoff:
 
 1. run the relevant local unit tests first
-2. validate with a small `uo-stress-company` run if applicable
-3. validate the dashboard flow against the local stack when practical
+2. validate the dashboard flow against the local stack when practical
 
 ## Commit & Pull Request Guidelines
 

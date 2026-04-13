@@ -1,7 +1,0 @@
-# Autonomous waste-disposal bot worker
-FROM python:3.13-slim
-
-WORKDIR /app
-COPY worker/unreal_worker.py ./unreal_worker.py
-
-CMD ["python3", "-u", "unreal_worker.py"]

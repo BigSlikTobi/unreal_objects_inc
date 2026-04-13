@@ -13,8 +13,6 @@ RUN pip install --no-cache-dir git+https://github.com/BigSlikTobi/unreal_objects
 COPY pyproject.toml ./
 COPY company_api/ ./company_api/
 COPY support_company/ ./support_company/
-COPY bot_adapter/ ./bot_adapter/
-COPY stress_runner/ ./stress_runner/
 RUN pip install --no-cache-dir .
 
 COPY entrypoint-company.sh ./entrypoint-company.sh

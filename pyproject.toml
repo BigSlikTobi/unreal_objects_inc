@@ -25,11 +25,10 @@ dev = [
 ]
 
 [project.scripts]
-uo-stress-company = "stress_runner.cli:main"
 uo-company-server = "company_api.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["support_company*", "bot_adapter*", "stress_runner*", "company_api*"]
+include = ["support_company*", "company_api*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
