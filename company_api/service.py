@@ -60,7 +60,6 @@ from .models import (
     PricingCatalogResponse,
     RuleDTO,
     RuleGroupDTO,
-    RulesResponse,
     WasteEventDTO,
 )
 
@@ -615,10 +614,6 @@ class CompanySimulationService:
                 bankruptcy_count=self.bankruptcy_count,
                 current_run_id=self._current_run_id,
             )
-
-    async def get_rules(self) -> RulesResponse:
-        await self._refresh_live_rule_catalog()
-        return RulesResponse(rules=self.rules, group_id=self.group_id, groups=self.rule_groups)
 
     async def get_pricing(self, waste_type: str | None = None) -> PricingCatalogResponse:
         return PricingCatalogResponse(

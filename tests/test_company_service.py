@@ -446,12 +446,10 @@ async def test_live_rule_group_refreshes_rules_from_unreal_objects(monkeypatch):
     monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
 
     await service.initialize()
-    rules = await service.get_rules()
 
-    assert rules.group_id == "grp-live"
-    assert len(rules.rules) == 1
-    assert rules.rules[0].name == "Live Capacity Rule"
-    assert rules.groups[0].id == "grp-live"
+    assert service.group_id == "grp-live"
+    assert len(service.rules) == 1
+    assert service.rules[0].name == "Live Capacity Rule"
 
 
 @pytest.mark.asyncio
@@ -504,11 +502,10 @@ async def test_live_rule_catalog_lists_all_groups_without_pinned_group(monkeypat
     monkeypatch.setattr(service, "_fetch_live_rule_groups", fake_groups)
 
     await service.initialize()
-    rules = await service.get_rules()
 
-    assert rules.group_id is None
-    assert {group.id for group in rules.groups} == {"grp-one", "grp-two"}
-    assert {rule.group_name for rule in rules.rules} == {"Operations", "Economics"}
+    assert service.group_id is None
+    assert {group.id for group in service.rule_groups} == {"grp-one", "grp-two"}
+    assert {rule.group_name for rule in service.rules} == {"Operations", "Economics"}
 
 
 @pytest.mark.asyncio

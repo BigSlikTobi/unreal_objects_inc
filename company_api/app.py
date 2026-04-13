@@ -182,10 +182,6 @@ def build_app(
     async def economics():
         return await service.get_economics()
 
-    @app.get("/api/v1/rules")
-    async def rules():
-        return await service.get_rules()
-
     @app.get("/api/v1/pricing", response_model=PricingCatalogResponse)
     async def pricing(waste_type: str | None = None):
         return await service.get_pricing(waste_type=waste_type)
