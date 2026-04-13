@@ -32,7 +32,6 @@
 #   DEPLOYMENT_MODE=hosted
 #   GENERATOR_MODE=template
 #   ACCELERATION=2
-#   RULE_ENGINE_URL=https://ruleengine-production-d6fe.up.railway.app
 #   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
 #   INTERNAL_API_KEY=<shared-secret matching unreal_objects project>
 #   ENVIRONMENT=production
