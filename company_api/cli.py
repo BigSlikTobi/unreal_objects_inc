@@ -1,7 +1,5 @@
 """CLI for running the simulated waste-company API server."""
 
-from pathlib import Path
-
 import click
 import uvicorn
 
@@ -9,8 +7,6 @@ from .app import build_app
 from support_company.simulator import DEFAULT_LLM_MODEL
 from .service import DEFAULT_ACCELERATION, DEFAULT_ORDER_INTERVAL_REAL_SECONDS
 
-
-DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "support_company.json"
 
 
 @click.command()
@@ -41,12 +37,6 @@ DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "sup
     default=True,
     help="Fall back to deterministic templates if the LLM is unavailable.",
 )
-@click.option(
-    "--rule-pack",
-    type=click.Path(exists=True),
-    default=str(DEFAULT_RULE_PACK),
-    help="Path to the rule pack JSON file to load into Unreal Objects.",
-)
 def main(
     host: str,
     port: int,
@@ -66,14 +56,12 @@ def main(
     generator_mode: str,
     llm_model: str,
     allow_template_fallback: bool,
-    rule_pack: str,
 ) -> None:
     """Run the Unreal Objects Inc waste-company server."""
     if rolling and cases is None:
         raise click.BadOptionUsage("--rolling", "--rolling requires --cases so the server knows the total bounded order count.")
 
     app = build_app(
-        rule_pack_path=rule_pack,
         initial_order_count=cases,
         rolling_generation=rolling,
         seed=seed,

@@ -84,7 +84,6 @@ class CompanySimulationService:
 
     def __init__(
         self,
-        rule_pack_path: str | Path,
         initial_order_count: int | None = 24,
         rolling_generation: bool = False,
         seed: int = 42,
@@ -105,7 +104,6 @@ class CompanySimulationService:
         claim_expiry_seconds: int = 120,
         cost_policy_path: str | Path | None = None,
     ):
-        self.rule_pack_path = Path(rule_pack_path)
         self.initial_order_count = initial_order_count
         self.rolling_generation = rolling_generation
         self.seed = seed
