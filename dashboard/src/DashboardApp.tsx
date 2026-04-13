@@ -156,7 +156,6 @@ export function DashboardApp() {
         <div className="console-view-stack">
           <ApprovalQueue
             approvals={allApprovals}
-            rules={[]}
             status={status.data}
             onVote={handleApprovalVote}
             onFinalize={handleApprovalFinalize}
@@ -200,7 +199,6 @@ export function DashboardApp() {
           apiHealthy={apiHealthy}
           botConnected={botConnected}
           status={status.data}
-          rulesCount={0}
           pricing={pricing.data}
         />
       );
@@ -215,7 +213,6 @@ export function DashboardApp() {
         <KpiStrip
           status={status.data}
           economics={economics.data}
-          rulesCount={0}
           pricingReferenceCount={(pricing.data?.market_quotes.length ?? 0) + (pricing.data?.operational_options.length ?? 0)}
         />
         {claimedOrders > 0 && (
@@ -244,7 +241,6 @@ export function DashboardApp() {
         </div>
         <ApprovalQueue
           approvals={allApprovals}
-          rules={allRules}
           status={status.data}
           onVote={handleApprovalVote}
           onFinalize={handleApprovalFinalize}

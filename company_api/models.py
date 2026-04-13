@@ -40,7 +40,6 @@ class CompanyStatus(BaseModel):
     virtual_time: str | None
     current_run_started_at: str | None = None
     acceleration: int | None
-    group_id: str | None
     deployment_mode: str = "local"
     public_voting_enabled: bool = False
     operator_auth_enabled: bool = False

@@ -5,7 +5,6 @@ import type { ReactNode } from 'react';
 interface Props {
   status: CompanyStatus | null;
   economics: EconomicsSnapshot | null;
-  rulesCount: number;
   pricingReferenceCount: number;
 }
 
@@ -66,12 +65,6 @@ export function KpiStrip({ status, economics, rulesCount, pricingReferenceCount 
         value={stats?.rented_extra_containers ?? '—'}
         icon={<Factory className="h-5 w-5" />}
         footnote={`${stats?.active_containers ?? 0} active containers total`}
-      />
-      <KpiCard
-        label="Active Rules"
-        value={rulesCount}
-        icon={<AlertTriangle className="h-5 w-5" />}
-        footnote={`${status?.group_id ? 'Pinned rule group' : 'Live mirrored groups'}`}
       />
       <KpiCard
         label="Pricing References"

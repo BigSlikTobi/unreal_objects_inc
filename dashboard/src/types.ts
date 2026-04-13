@@ -2,7 +2,6 @@ export interface CompanyStatus {
   virtual_time: string | null;
   current_run_started_at: string | null;
   acceleration: number | null;
-  group_id: string | null;
   deployment_mode: string;
   public_voting_enabled: boolean;
   operator_auth_enabled: boolean;
@@ -246,29 +245,3 @@ export interface ApprovalsResponse {
   total: number;
 }
 
-export interface RuleDTO {
-  id: string;
-  group_id: string | null;
-  group_name: string | null;
-  name: string;
-  feature: string;
-  active: boolean;
-  datapoints: string[];
-  edge_cases: string[];
-  edge_cases_json: Record<string, unknown>[];
-  rule_logic: string;
-  rule_logic_json: Record<string, unknown>;
-}
-
-export interface RuleGroupDTO {
-  id: string;
-  name: string;
-  description: string;
-  rule_count: number;
-}
-
-export interface RulesResponse {
-  rules: RuleDTO[];
-  group_id: string | null;
-  groups: RuleGroupDTO[];
-}

@@ -22,9 +22,7 @@ DEFAULT_RULE_PACK = Path(__file__).resolve().parent.parent / "rule_packs" / "sup
 @click.option("--acceleration", default=DEFAULT_ACCELERATION, help="Virtual clock acceleration multiplier.")
 @click.option("--order-interval", default=DEFAULT_ORDER_INTERVAL_REAL_SECONDS, type=click.FloatRange(min=0.0, min_open=True), help="Average real-time seconds between new orders.")
 @click.option("--deployment-mode", type=click.Choice(["local", "hosted"], case_sensitive=False), default="local", help="Run in local LAN mode or hosted public mode.")
-@click.option("--rule-engine-url", default="http://127.0.0.1:8001", help="Unreal Objects Rule Engine base URL.")
 @click.option("--decision-center-url", default="http://127.0.0.1:8002", help="Unreal Objects Decision Center base URL.")
-@click.option("--rule-group-id", default=None, help="Live Unreal Objects rule group to mirror in the dashboard.")
 @click.option("--public-voting/--no-public-voting", default=None, help="Enable public voting on approval items.")
 @click.option("--operator-auth/--no-operator-auth", default=None, help="Require an operator token for approval finalization.")
 @click.option("--operator-token", default=None, help="Shared operator token used for protected approval finalization.")
@@ -58,9 +56,7 @@ def main(
     acceleration: int,
     order_interval: float,
     deployment_mode: str,
-    rule_engine_url: str,
     decision_center_url: str,
-    rule_group_id: str | None,
     public_voting: bool | None,
     operator_auth: bool | None,
     operator_token: str | None,
@@ -85,9 +81,7 @@ def main(
         order_interval=order_interval,
         deployment_mode=deployment_mode,
         generator_mode=generator_mode,
-        rule_engine_url=rule_engine_url,
         decision_center_url=decision_center_url,
-        rule_group_id=rule_group_id,
         public_voting_enabled=public_voting,
         operator_auth_enabled=operator_auth,
         operator_token=operator_token,

@@ -91,9 +91,7 @@ class CompanySimulationService:
         acceleration: int = DEFAULT_ACCELERATION,
         order_interval: float = DEFAULT_ORDER_INTERVAL_REAL_SECONDS,
         generator_mode: str = "mixed",
-        rule_engine_url: str = "http://127.0.0.1:8001",
         decision_center_url: str = "http://127.0.0.1:8002",
-        rule_group_id: str | None = None,
         llm_model: str = DEFAULT_LLM_MODEL,
         llm_api_key: str | None = None,
         allow_template_fallback: bool = True,
@@ -115,7 +113,6 @@ class CompanySimulationService:
         self.generator_mode = generator_mode
         self.decision_center_url = decision_center_url.rstrip("/")
         self.internal_api_key = internal_api_key
-        self.rule_group_id = rule_group_id
         self.llm_model = llm_model
         self.llm_api_key = llm_api_key
         self.allow_template_fallback = allow_template_fallback
@@ -130,7 +127,6 @@ class CompanySimulationService:
         self.continuous_mode = initial_order_count is None
         self.bounded_rolling_mode = rolling_generation and initial_order_count is not None and initial_order_count > 0
 
-        self.group_id: str | None = None
         self.records: dict[str, OrderRecord] = {}
         self.source_orders: dict[str, DisposalOrder] = {}
         self.source_events: dict[str, CompanyEvent] = {}
@@ -172,7 +168,6 @@ class CompanySimulationService:
         self._maintenance_task: asyncio.Task | None = None
 
     async def initialize(self) -> None:
-        self.group_id = self.rule_group_id
         restored = await self._load_persisted_state()
         if not restored:
             await self._reset_live_company_state(seed_offset=0)
@@ -500,7 +495,6 @@ class CompanySimulationService:
             virtual_time=isoformat(self._virtual_now()),
             current_run_started_at=isoformat(self._current_run_started_at),
             acceleration=self.acceleration,
-            group_id=self.group_id,
             deployment_mode=self.deployment_mode,
             public_voting_enabled=self.public_voting_enabled,
             operator_auth_enabled=self.operator_auth_enabled,
