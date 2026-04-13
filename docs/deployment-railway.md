@@ -17,16 +17,12 @@ The Unreal Objects Inc stack splits across two Railway projects:
                         ↑ HTTPS
   unreal_objects_inc project
   ┌────────────────────────────────────────────────┐
-  │  company.*                                      │
-  │  unrealobjectsinc-production.up.railway.app     │
-  │  Company API + Dashboard (Dockerfile.company)   │
+  │  company     (Dockerfile.company.api, :8010)   │
+  │  unrealobjectsinc.up.railway.app               │
+  │                                                │
+  │  dashboard   (Dockerfile.dashboard, :8081)     │
+  │  dashboard-production-fcf4.up.railway.app      │
   └────────────────────────────────────────────────┘
-
-  LOCAL (Raspberry Pi)
-  ┌──────────────────────────────────────────────────────┐
-  │  worker/unreal_worker.py                              │
-  │  Connects to company + decision-center public URLs    │
-  └──────────────────────────────────────────────────────┘
 ```
 
 ## Prerequisites
@@ -35,13 +31,14 @@ The Unreal Objects Inc stack splits across two Railway projects:
 - Railway account with the `athletic-spirit` project
 - Git repo pushed to GitHub
 
-## Step 1: Create the company service
+## Step 1: Create Railway services
 
-In the Railway dashboard, create one service:
+In the Railway dashboard, create two services:
 
 | Service Name | Dockerfile | Port |
 |-------------|------------|------|
-| `company` | `Dockerfile.company` | 8010 |
+| `company` | `Dockerfile.company.api` | 8010 |
+| `dashboard` | `Dockerfile.dashboard` | 8081 |
 
 ## Step 2: Set Environment Variables
 
@@ -50,7 +47,6 @@ In the Railway dashboard, create one service:
 | `DEPLOYMENT_MODE` | `hosted` |
 | `GENERATOR_MODE` | `template` |
 | `ACCELERATION` | `10` |
-| `RULE_ENGINE_URL` | `https://ruleengine-production-d6fe.up.railway.app` |
 | `DECISION_CENTER_URL` | `https://decisioncenter-production-1c81.up.railway.app` |
 | `INTERNAL_API_KEY` | _(same shared secret used in the unreal_objects project)_ |
 | `ENVIRONMENT` | `production` |
@@ -73,17 +69,6 @@ curl https://unrealobjectsinc-production.up.railway.app/v1/health
 
 # Dashboard — open in browser
 open https://unrealobjectsinc-production.up.railway.app
-```
-
-## Step 5: Run the Bot on Your Raspberry Pi
-
-```bash
-export COMPANY_API_URL=https://unrealobjectsinc-production.up.railway.app
-export DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
-export BOT_ID=deborahbot3000
-export POLL_INTERVAL=5
-
-python3 worker/unreal_worker.py
 ```
 
 ## Notes

@@ -15,10 +15,6 @@
 #   ────────────────────────────────────────────────────────────────
 #   Rule Engine, Decision Center, MCP, UI — managed in the unreal_objects repo
 #
-#   LOCAL (Raspberry Pi / dev machine)
-#   ──────────────────────────────────
-#   worker  — Autonomous bot agent (worker/unreal_worker.py)
-#
 # ── Build configuration ──────────────────────────────────────────
 #
 # After connecting each service to this GitHub repo in the Railway UI,
@@ -42,10 +38,5 @@
 # [dashboard]
 #   VITE_API_BASE=https://unrealobjectsinc.up.railway.app/api/v1
 #
-# [local worker — NOT on Railway]
-#   COMPANY_API_URL=https://unrealobjectsinc.up.railway.app
-#   DECISION_CENTER_URL=https://decisioncenter-production-1c81.up.railway.app
-#   BOT_ID=deborahbot3000
-#   POLL_INTERVAL=5
 #
 # See docs/deployment-railway.md for the full step-by-step guide.

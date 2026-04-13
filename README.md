@@ -21,8 +21,6 @@ Points 1 to 3 happen outside this repo. This repo covers points 4 to 8.
 
 - `company_api/`: the company server on port `8010`
 - `support_company/`: disposal-order and container simulation
-- `bot_adapter/`: the bot’s adapter into Unreal Objects
-- `stress_runner/`: batch simulation and reporting
 - `dashboard/`: the company operations dashboard
 - `rule_packs/`: waste-management guardrails loaded into Unreal Objects
 - `scripts/`: local helper scripts such as stack startup and rule-pack loading
@@ -147,12 +145,6 @@ Rolling generation is now tied to simulated time instead of a fixed real-time bu
 
 By default, the company server will auto-discover live rule groups from Unreal Objects and mirror them in the dashboard when the Rule Engine is reachable.
 
-If you want to pin the dashboard to one specific live group, start the company server with:
-
-```bash
-uo-company-server --host 0.0.0.0 --port 8010 --rule-group-id <GROUP_ID>
-```
-
 For mixed generation, put `OPENAI_API_KEY=...` in a local `.env` file or export it in your shell. The company server and batch runner default to `--generator-mode mixed` with `gpt-5.4-mini-2026-03-17`: part of the stream comes from the LLM and part comes from deterministic templates. If the LLM is unavailable, the missing share falls back to deterministic templates unless you disable fallback.
 
 At the default `24x` acceleration, `1` real hour equals `1` simulated day.
@@ -194,16 +186,6 @@ The economics endpoint now exposes liquidity and burn, including:
 - `invoiced_revenue_eur`
 - `operating_cost_eur`
 - `daily_burn_eur`
-
-## Batch Simulation
-
-You can also run a batch simulation without the dashboard:
-
-```bash
-uo-stress-company --cases 50 --seed 42
-```
-
-Reports are written to `reports/`.
 
 ## Testing
 
