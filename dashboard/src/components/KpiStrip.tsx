@@ -37,7 +37,7 @@ function KpiCard({
   );
 }
 
-export function KpiStrip({ status, economics, rulesCount, pricingReferenceCount }: Props) {
+export function KpiStrip({ status, economics, pricingReferenceCount }: Props) {
   const stats = status?.stats;
 
   return (
