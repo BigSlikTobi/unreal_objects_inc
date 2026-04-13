@@ -23,6 +23,7 @@ from .models import (
     EventsResponse,
     OrderClaimRequest,
     OrderReleaseRequest,
+    OrderReleaseResponse,
     OrderResultSubmission,
     OrdersResponse,
     PricingCatalogResponse,
@@ -132,7 +133,7 @@ def build_app(
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    @app.post("/api/v1/orders/{order_id}/release")
+    @app.post("/api/v1/orders/{order_id}/release", response_model=OrderReleaseResponse)
     async def release_order(order_id: str, payload: OrderReleaseRequest):
         try:
             return await service.release_order(order_id=order_id, bot_id=payload.bot_id)

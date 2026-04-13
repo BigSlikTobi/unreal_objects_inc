@@ -102,6 +102,7 @@ class CompanySimulationService:
         internal_api_key: str | None = None,
         persistence_path: str | Path | None = None,
         bot_connection_timeout_seconds: int = 120,
+        claim_expiry_seconds: int = 120,
         cost_policy_path: str | Path | None = None,
     ):
         self.rule_pack_path = Path(rule_pack_path)
@@ -144,7 +145,7 @@ class CompanySimulationService:
         self.bot_identity: str | None = None
         self.bot_last_seen_at: datetime | None = None
         self.claimed_at: dict[str, datetime] = {}
-        self.claim_expiry_seconds: int = bot_connection_timeout_seconds
+        self.claim_expiry_seconds: int = claim_expiry_seconds
 
         self.invoiced_revenue_eur = 0.0
         self.revenue_eur = 0.0
@@ -395,9 +396,10 @@ class CompanySimulationService:
         await self._persist_state()
         return response
 
-    async def release_order(self, order_id: str, bot_id: str) -> dict:
+    async def release_order(self, order_id: str, bot_id: str) -> "OrderReleaseResponse":
         from .models import OrderReleaseResponse
         async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
             record = self.records.get(order_id)
             if record is None:
                 raise KeyError(order_id)
@@ -408,13 +410,14 @@ class CompanySimulationService:
             record.dto.status = OrderStatus.OPEN.value
             record.dto.assigned_to = None
             self.claimed_at.pop(order_id, None)
+            self._mark_bot_seen(bot_id)
             response = OrderReleaseResponse(
                 order_id=order_id,
                 status=record.dto.status,
                 released=True,
             )
         await self._persist_state()
-        return response.model_dump()
+        return response
 
     async def submit_order_result(
         self,
@@ -437,6 +440,8 @@ class CompanySimulationService:
                 raise KeyError(order_id)
             if record.dto.status not in {OrderStatus.OPEN.value, OrderStatus.CLAIMED.value, OrderStatus.BLOCKED.value}:
                 raise ValueError(f"Order {order_id} cannot accept a bot result from status {record.dto.status}")
+            if record.dto.assigned_to is not None and record.dto.assigned_to != bot_id:
+                raise ValueError(f"Order {order_id} is assigned to {record.dto.assigned_to}, not {bot_id}")
             order = self.source_orders[order_id]
 
             record.dto.assigned_to = bot_id
@@ -1210,6 +1215,7 @@ class CompanySimulationService:
             "containers": {container_id: container.model_dump(mode="json") for container_id, container in self.containers.items()},
             "approval_votes": {request_id: state.model_dump(mode="json") for request_id, state in self.approval_votes.items()},
             "final_decisions": {request_id: state.model_dump(mode="json") for request_id, state in self.final_decisions.items()},
+            "claimed_at": {order_id: isoformat(ts) for order_id, ts in self.claimed_at.items()},
         }
         self.persistence_path.write_text(json.dumps(snapshot, indent=2))
 
@@ -1295,5 +1301,9 @@ class CompanySimulationService:
             self.final_decisions = {
                 request_id: ApprovalDecisionMetadata.model_validate(state_payload)
                 for request_id, state_payload in payload.get("final_decisions", {}).items()
+            }
+            self.claimed_at = {
+                order_id: datetime.fromisoformat(ts)
+                for order_id, ts in payload.get("claimed_at", {}).items()
             }
         return True

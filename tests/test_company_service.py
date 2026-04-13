@@ -691,8 +691,8 @@ async def test_release_order_returns_to_open():
 
     result = await service.release_order("order-release", bot_id="bot-alpha")
 
-    assert result["released"] is True
-    assert result["status"] == OrderStatus.OPEN.value
+    assert result.released is True
+    assert result.status == OrderStatus.OPEN.value
     orders = await service.get_orders()
     assert orders[0].status == OrderStatus.OPEN.value
     assert orders[0].assigned_to is None
@@ -724,7 +724,7 @@ async def test_claim_expiry_releases_stale_claims():
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
-        bot_connection_timeout_seconds=1,
+        claim_expiry_seconds=1,
     )
     await service.initialize()
     await service.ingest_order(make_order("order-expire"))
@@ -736,8 +736,9 @@ async def test_claim_expiry_releases_stale_claims():
     from company_api.service import utcnow
     service.claimed_at["order-expire"] = utcnow() - timedelta(seconds=2)
 
-    # Trigger maintenance expiry
-    service._expire_stale_claims_locked()
+    # Trigger maintenance expiry (under the lock, as in production)
+    async with service._lock:
+        service._expire_stale_claims_locked()
 
     orders = await service.get_orders()
     assert orders[0].status == OrderStatus.OPEN.value
@@ -750,13 +751,14 @@ async def test_claim_expiry_does_not_release_fresh_claims():
     service = CompanySimulationService(
         rule_pack_path=Path("rule_packs/support_company.json"),
         initial_order_count=0,
-        bot_connection_timeout_seconds=120,
+        claim_expiry_seconds=120,
     )
     await service.initialize()
     await service.ingest_order(make_order("order-fresh"))
     await service.claim_order("order-fresh", bot_id="bot-alpha")
 
-    service._expire_stale_claims_locked()
+    async with service._lock:
+        service._expire_stale_claims_locked()
 
     orders = await service.get_orders()
     assert orders[0].status == OrderStatus.CLAIMED.value
