@@ -4,7 +4,6 @@ set -euo pipefail
 # Start the company API server
 # CLI options are controlled via environment variables
 exec uo-company-server \
-    --rule-pack /app/rule_packs/support_company.json \
     --host 0.0.0.0 \
     --port "${PORT:-8010}" \
     --deployment-mode "${DEPLOYMENT_MODE:-hosted}" \
@@ -17,5 +16,4 @@ exec uo-company-server \
     ${OPERATOR_AUTH:+--operator-auth} \
     ${OPERATOR_TOKEN:+--operator-token "$OPERATOR_TOKEN"} \
     ${PERSISTENCE_PATH:+--persistence-path "$PERSISTENCE_PATH"} \
-    ${RULE_GROUP_ID:+--rule-group-id "$RULE_GROUP_ID"} \
     ${INTERNAL_API_KEY:+--internal-api-key "$INTERNAL_API_KEY"}
