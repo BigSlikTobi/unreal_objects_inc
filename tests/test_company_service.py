@@ -216,8 +216,11 @@ def test_generation_delay_stays_within_stress_window():
 
     samples = [service._next_generation_delay_seconds() for _ in range(20)]
 
+    # With 0 pending orders the backpressure multiplier is 0.5x,
+    # so the effective base is half the default interval.
+    effective_base = DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 0.5
     assert all(
-        (DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 0.75) <= sample <= (DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 1.25)
+        (effective_base * 0.75) <= sample <= (effective_base * 1.25)
         for sample in samples
     )
 

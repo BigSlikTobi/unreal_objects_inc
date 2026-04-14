@@ -63,7 +63,7 @@ from .models import (
 
 CONTINUOUS_BOOTSTRAP_ORDERS = 2
 DEFAULT_ACCELERATION = 24
-DEFAULT_ORDER_INTERVAL_REAL_SECONDS = 60.0
+DEFAULT_ORDER_INTERVAL_REAL_SECONDS = 120.0
 DEFAULT_BANKRUPTCY_BURN_MULTIPLE = COST_POLICY_DEFAULT_BANKRUPTCY_BURN_MULTIPLE
 DEFAULT_DAILY_OVERHEAD_EUR = COST_POLICY_DEFAULT_DAILY_OVERHEAD_EUR
 OVERFLOW_PENALTY_EUR = 350.0
@@ -991,10 +991,23 @@ class CompanySimulationService:
         return sum(record.dto.offered_price_eur for record in self.records.values() if record.dto.status == OrderStatus.BLOCKED.value)
 
     def _next_generation_delay_seconds(self) -> float:
-        return self._arrival_rng.uniform(
-            self.order_interval * 0.75,
-            self.order_interval * 1.25,
+        # Backpressure: scale delay based on unprocessed order count
+        pending = sum(
+            1
+            for r in self.records.values()
+            if r.dto.status in (OrderStatus.OPEN.value, OrderStatus.CLAIMED.value)
         )
+        if pending <= 2:
+            multiplier = 0.5  # bots are idle, speed up
+        elif pending <= 5:
+            multiplier = 1.0  # normal pace
+        elif pending <= 10:
+            multiplier = 2.0  # bots are busy, slow down
+        else:
+            multiplier = 4.0  # heavily backed up, near-pause
+
+        base = self.order_interval * multiplier
+        return self._arrival_rng.uniform(base * 0.75, base * 1.25)
 
     def _virtual_now(self) -> datetime:
         elapsed = utcnow() - self._real_start
