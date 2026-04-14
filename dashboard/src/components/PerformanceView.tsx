@@ -101,8 +101,14 @@ export function PerformanceView({ orders, economics, containers }: Props) {
                   {(container.fill_ratio * 100).toFixed(0)}%
                 </div>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-[rgba(2,8,19,0.95)]">
-                <div className="h-full rounded-full bg-[linear-gradient(90deg,#79a6ff,#74e3c4)]" style={{ width: `${Math.min(container.fill_ratio * 100, 100)}%` }} />
+              <div className="progress-track">
+                <div
+                  className="progress-bar"
+                  style={{
+                    width: `${Math.min(container.fill_ratio * 100, 100)}%`,
+                    backgroundColor: 'var(--blue)',
+                  }}
+                />
               </div>
             </div>
           ))}

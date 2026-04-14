@@ -10,77 +10,106 @@ function money(value: number | null | undefined): string {
   return `${rounded < 0 ? '-' : ''}€${Math.abs(rounded)}`;
 }
 
-function ledgerValueClass(kind: 'positive' | 'cost' | 'balance', value: number | null | undefined): string {
-  if (value == null) return 'text-[var(--text-primary)]';
-  if (kind === 'positive') return 'text-[var(--teal)]';
-  if (kind === 'cost') return 'text-[var(--red)]';
-  return value >= 0 ? 'text-[var(--teal)]' : 'text-[var(--red)]';
+function ledgerColor(
+  kind: 'positive' | 'cost' | 'balance',
+  value: number | null | undefined,
+): string {
+  if (value == null) return 'var(--text-primary)';
+  if (kind === 'positive') return 'var(--green)';
+  if (kind === 'cost') return 'var(--red)';
+  return value >= 0 ? 'var(--green)' : 'var(--red)';
+}
+
+interface LedgerRowProps {
+  label: string;
+  value: number | null | undefined;
+  kind: 'positive' | 'cost' | 'balance';
+  large?: boolean;
+}
+
+function LedgerRow({ label, value, kind, large }: LedgerRowProps) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        fontSize: large ? '0.9375rem' : '0.8125rem',
+      }}
+    >
+      <span style={{ color: large ? 'var(--text-secondary)' : 'var(--text-muted)' }}>
+        {label}
+      </span>
+      <span
+        style={{
+          fontFamily: large ? '"Space Grotesk", sans-serif' : 'inherit',
+          fontWeight: large ? 700 : 500,
+          fontSize: large ? '1.125rem' : 'inherit',
+          color: ledgerColor(kind, value),
+          letterSpacing: large ? '-0.02em' : undefined,
+        }}
+      >
+        {money(value)}
+      </span>
+    </div>
+  );
 }
 
 export function EconomicsPanel({ economics }: Props) {
   return (
-    <section className="console-card console-side-panel p-5" aria-label="Economics">
+    <section className="console-card console-side-panel p-5" aria-label="Company economics">
       <div className="console-panel-header console-side-header">
         <div>
           <p className="console-panel-kicker">Economics</p>
-          <h2 className="editorial-title console-side-title text-[var(--text-primary)]">Company Ledger</h2>
-          <p className="mt-1 text-xs text-[var(--text-secondary)]">
+          <h2 className="editorial-title console-side-title">Company Ledger</h2>
+          <p className="mt-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
             Cash, invoices, liabilities, and current company run.
           </p>
         </div>
         <span className="ghost-pill">Run #{economics?.current_run_id ?? 1}</span>
       </div>
 
-      <div className="console-inset mt-4 space-y-3 p-4">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Cash In</span>
-          <span className={ledgerValueClass('positive', economics?.revenue_eur)}>{money(economics?.revenue_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Invoiced Revenue</span>
-          <span className={ledgerValueClass('positive', economics?.invoiced_revenue_eur)}>{money(economics?.invoiced_revenue_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Accounts Receivable</span>
-          <span className={ledgerValueClass('positive', economics?.accounts_receivable_eur)}>{money(economics?.accounts_receivable_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Accounts Payable</span>
-          <span className={ledgerValueClass('cost', economics?.accounts_payable_eur)}>{money(economics?.accounts_payable_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Operating Cost</span>
-          <span className={ledgerValueClass('cost', economics?.operating_cost_eur)}>{money(economics?.operating_cost_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Pickup & Exchange Cost</span>
-          <span className={ledgerValueClass('cost', economics?.rental_cost_eur)}>{money(economics?.rental_cost_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Overhead Cost</span>
-          <span className={ledgerValueClass('cost', economics?.overhead_cost_eur)}>{money(economics?.overhead_cost_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Penalty Cost</span>
-          <span className={ledgerValueClass('cost', economics?.penalty_cost_eur)}>{money(economics?.penalty_cost_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Penalty Avoided</span>
-          <span className={ledgerValueClass('positive', economics?.overflow_penalty_avoided_eur)}>{money(economics?.overflow_penalty_avoided_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-[var(--text-secondary)]">Early Empty Cost</span>
-          <span className={ledgerValueClass('cost', economics?.early_empty_cost_eur)}>{money(economics?.early_empty_cost_eur)}</span>
-        </div>
-        <div className="h-px bg-[rgba(122,146,183,0.14)]" />
-        <div className="flex items-center justify-between">
-          <span className="section-label">Cash Balance</span>
-          <span className={`display-number text-2xl ${ledgerValueClass('balance', economics?.cash_balance_eur)}`}>{money(economics?.cash_balance_eur)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="section-label">Realized Profit</span>
-          <span className={`display-number text-2xl ${ledgerValueClass('balance', economics?.profit_eur)}`}>{money(economics?.profit_eur)}</span>
-        </div>
+      <div
+        className="console-inset"
+        style={{ padding: '0.875rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+      >
+        {/* Revenue section */}
+        <LedgerRow label="Cash In" value={economics?.revenue_eur} kind="positive" />
+        <LedgerRow label="Invoiced Revenue" value={economics?.invoiced_revenue_eur} kind="positive" />
+        <LedgerRow label="Accounts Receivable" value={economics?.accounts_receivable_eur} kind="positive" />
+        <LedgerRow label="Accounts Payable" value={economics?.accounts_payable_eur} kind="cost" />
+
+        {/* Divider */}
+        <div
+          style={{
+            height: '1px',
+            background: 'var(--border-subtle)',
+            margin: '0.25rem 0',
+          }}
+          role="separator"
+        />
+
+        {/* Cost section */}
+        <LedgerRow label="Operating Cost" value={economics?.operating_cost_eur} kind="cost" />
+        <LedgerRow label="Pickup & Exchange Cost" value={economics?.rental_cost_eur} kind="cost" />
+        <LedgerRow label="Overhead Cost" value={economics?.overhead_cost_eur} kind="cost" />
+        <LedgerRow label="Penalty Cost" value={economics?.penalty_cost_eur} kind="cost" />
+        <LedgerRow label="Penalty Avoided" value={economics?.overflow_penalty_avoided_eur} kind="positive" />
+        <LedgerRow label="Early Empty Cost" value={economics?.early_empty_cost_eur} kind="cost" />
+
+        {/* Divider */}
+        <div
+          style={{
+            height: '1px',
+            background: 'var(--border-subtle)',
+            margin: '0.25rem 0',
+          }}
+          role="separator"
+        />
+
+        {/* Summary */}
+        <LedgerRow label="Cash Balance" value={economics?.cash_balance_eur} kind="balance" large />
+        <LedgerRow label="Realized Profit" value={economics?.profit_eur} kind="balance" large />
       </div>
     </section>
   );
