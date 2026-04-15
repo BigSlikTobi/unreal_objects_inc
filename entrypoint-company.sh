@@ -9,7 +9,7 @@ exec uo-company-server \
     --deployment-mode "${DEPLOYMENT_MODE:-hosted}" \
     --generator-mode "${GENERATOR_MODE:-template}" \
     --acceleration "${ACCELERATION:-10}" \
-    --order-interval "${ORDER_INTERVAL:-60}" \
+    --order-interval "${ORDER_INTERVAL:-120}" \
     --decision-center-url "${DECISION_CENTER_URL:-http://127.0.0.1:8002}" \
     ${CASES:+--cases "$CASES"} \
     ${PUBLIC_VOTING:+--public-voting} \
