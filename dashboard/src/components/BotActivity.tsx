@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Bot, ChevronDown } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Bot } from 'lucide-react';
 import type { ApprovalItemDTO, CompanyStatus, DisposalOrderDTO } from '../types';
 
 interface Props {
@@ -16,228 +16,283 @@ function elapsed(iso: string): string {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+function money(value: number | null): string {
+  return value == null ? '—' : `€${value.toFixed(0)}`;
+}
+
 export function BotActivity({ orders, approvals, status }: Props) {
-  const [activityExpanded, setActivityExpanded] = useState(false);
-  const claimed = orders.filter((order) => order.status === 'claimed');
-  const recentApproved = orders
-    .filter((order) => order.status === 'completed')
-    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    .slice(0, 5);
-  const recentRejected = orders
-    .filter((order) => order.status === 'rejected')
-    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    .slice(0, 5);
-  const recentPending = [...approvals]
-    .sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())
-    .slice(0, 5);
-  const blocked = orders.filter((order) => order.status === 'blocked').length;
-  const completed = orders.filter((order) => order.status === 'completed').length;
+  const [botFilter, setBotFilter] = useState<string>('all');
+
   const botConnected = status?.bot_connected ?? false;
-  const engineName = (status?.bot_identity ?? 'openclaw waste bot').toUpperCase();
-  const engaged = claimed.length + blocked + completed;
+  const engineName = status?.bot_identity ?? 'Bot';
+
+  // Collect unique bot identities from assigned_to
+  const botIdentities = useMemo(() => {
+    const set = new Set<string>();
+    for (const o of orders) {
+      if (o.assigned_to) set.add(o.assigned_to);
+    }
+    return [...set].sort();
+  }, [orders]);
+
+  // Build a set of order IDs belonging to the selected bot (for linking approvals)
+  const botOrderIds = useMemo(() => {
+    if (botFilter === 'all') return null;
+    const ids = new Set<string>();
+    for (const o of orders) {
+      if (o.assigned_to === botFilter) ids.add(o.order_id);
+    }
+    return ids;
+  }, [orders, botFilter]);
+
+  // Filter orders by bot
+  const filteredOrders = useMemo(() => {
+    if (botFilter === 'all') return orders;
+    return orders.filter((o) => o.assigned_to === botFilter);
+  }, [orders, botFilter]);
+
+  // Filter approvals by matching order_id to the selected bot's orders
+  const filteredApprovals = useMemo(() => {
+    if (!botOrderIds) return approvals;
+    return approvals.filter((a) => botOrderIds.has(a.order_id));
+  }, [approvals, botOrderIds]);
+
+  const claimed = filteredOrders.filter((o) => o.status === 'claimed');
+  const blocked = filteredOrders.filter((o) => o.status === 'blocked').length;
+  const completed = filteredOrders.filter((o) => o.status === 'completed').length;
+  const rejected = filteredOrders.filter((o) => o.status === 'rejected').length;
+
+  // Decision outcome counts
+  const outcomeCounts = { APPROVED: 0, REJECTED: 0, APPROVAL_REQUIRED: 0 };
+  for (const o of filteredOrders) {
+    const oc = o.decision_outcome;
+    if (oc && oc in outcomeCounts) outcomeCounts[oc as keyof typeof outcomeCounts]++;
+  }
+  const outcomeTotal = Math.max(outcomeCounts.APPROVED + outcomeCounts.REJECTED + outcomeCounts.APPROVAL_REQUIRED, 1);
+
+  const recentCompleted = filteredOrders
+    .filter((o) => o.status === 'completed')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
+  const recentRejected = filteredOrders
+    .filter((o) => o.status === 'rejected')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
+  const recentPending = [...filteredApprovals]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 8);
 
   return (
-    <section className="console-card console-side-panel p-5" aria-label="Bot activity">
-      <div className="console-panel-header console-side-header">
+    <section className="view-page flex min-h-0 flex-col" aria-label="Bot activity">
+      {/* Header */}
+      <div className="bot-page-header">
         <div>
-          <p className="console-panel-kicker">Core Engine</p>
-          <h2 className="editorial-title console-side-title text-[var(--text-primary)]">{engineName}</h2>
+          <p className="console-panel-kicker">Autonomous Agent</p>
+          <h2 className="console-panel-title">{engineName}</h2>
         </div>
-        <span className={`status-chip ${botConnected ? 'status-approved' : 'status-neutral'}`}>
-          {botConnected ? 'Stable' : 'Offline'}
-        </span>
-      </div>
-
-      <div className="console-inset console-engine-card p-4">
-        <div className="mb-4 flex items-start justify-between gap-4">
-          <div>
-            <div className="section-label">Current posture</div>
-            <div className="mt-1 text-sm leading-6 text-[var(--text-secondary)]">
-              {botConnected
-                ? 'External bot is choosing waste actions, checking them against guardrails, and posting company outcomes back.'
-                : 'No external bot is currently connected to disposal intake.'}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="section-label !text-[0.58rem]">Orders engaged</div>
-            <div className="display-number text-[2rem] leading-none text-[var(--text-primary)]">{engaged}</div>
-          </div>
-        </div>
-
-        <div className="console-engine-stats mt-4">
-          <div>
-            <div className="section-label !text-[0.6rem]">Claimed</div>
-            <div className="mt-1 text-[var(--text-primary)]">{claimed.length}</div>
-          </div>
-          <div>
-            <div className="section-label !text-[0.6rem]">Blocked</div>
-            <div className="mt-1 text-[var(--text-primary)]">{blocked}</div>
-          </div>
-          <div>
-            <div className="section-label !text-[0.6rem]">Completed</div>
-            <div className="mt-1 text-[var(--text-primary)]">{completed}</div>
-          </div>
+        <div className="console-panel-actions">
+          <span
+            className={`status-badge ${botConnected ? 'status-badge-green' : 'status-badge-red'}`}
+          >
+            <span className="status-badge-dot" aria-hidden="true" />
+            {botConnected ? 'Connected' : 'Offline'}
+          </span>
         </div>
       </div>
 
-      {!botConnected ? (
-        <div className="console-inset console-side-empty mt-4 flex flex-col items-center justify-center py-6 text-[var(--text-secondary)]">
-          <Bot className="mb-2 h-8 w-8 opacity-40" />
-          <p className="text-sm italic">Orders are waiting until a bot claims them.</p>
-        </div>
-      ) : (
-        <div className="mt-4 space-y-4">
-          {claimed.length === 0 ? (
-            <div className="console-inset console-side-empty flex flex-col items-center justify-center py-6 text-[var(--text-secondary)]">
-              <Bot className="mb-2 h-8 w-8 opacity-40" />
-              <p className="text-sm italic">Bot connected, but no active disposal decisions right now.</p>
-            </div>
-          ) : (
-            <div>
+      {/* Bot filter bar */}
+      {botIdentities.length > 0 && (
+        <div className="order-filter-bar">
+          <button
+            type="button"
+            className={`order-filter-chip ${botFilter === 'all' ? 'order-filter-chip-active' : ''}`}
+            onClick={() => setBotFilter('all')}
+          >
+            All Bots
+            <span className="order-filter-count">{orders.filter((o) => o.assigned_to).length}</span>
+          </button>
+          {botIdentities.map((id) => {
+            const count = orders.filter((o) => o.assigned_to === id).length;
+            return (
               <button
+                key={id}
                 type="button"
-                className="bot-activity-accordion-toggle"
-                onClick={() => setActivityExpanded((current) => !current)}
-                aria-expanded={activityExpanded}
+                className={`order-filter-chip ${botFilter === id ? 'order-filter-chip-active' : ''}`}
+                onClick={() => setBotFilter(id)}
               >
-                <div className="bot-activity-dot-strip" aria-hidden="true">
-                  {claimed.map((order) => (
-                    <span key={order.order_id} className="pulse-dot pulse-dot-compact" />
-                  ))}
-                </div>
-                <div className="bot-activity-accordion-copy">
-                  <span className="section-label !mb-0">Orders In Progress</span>
-                  <span className="text-xs text-[var(--text-secondary)]">{claimed.length} active</span>
-                </div>
-                <ChevronDown className={`bot-activity-accordion-chevron ${activityExpanded ? 'bot-activity-accordion-chevron-open' : ''}`} />
+                {id}
+                <span className="order-filter-count">{count}</span>
               </button>
-
-              {activityExpanded && (
-                <div className="console-side-list mt-3 space-y-2">
-                  {claimed.map((order) => (
-                    <div key={order.order_id} className="console-inset flex items-center justify-between px-3 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="pulse-dot" />
-                        <span className="text-sm font-medium text-[var(--text-primary)]">{order.declared_waste_type}</span>
-                        <span className="text-xs text-[var(--text-secondary)]">{order.quantity_m3.toFixed(1)} m3</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                        {order.assigned_to && <span>{order.assigned_to}</span>}
-                        <span className="section-label !text-[0.62rem] !tracking-[0.12em]">{elapsed(order.created_at)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="bot-activity-history-grid">
-            <DecisionColumn
-              title="Recent Approved"
-              orders={recentApproved}
-              emptyMessage="No approved orders yet."
-              outcome="approved"
-            />
-            <DecisionColumn
-              title="Recent Rejected"
-              orders={recentRejected}
-              emptyMessage="No rejected orders yet."
-              outcome="rejected"
-            />
-            <PendingApprovalColumn
-              title="Recent Pending Approvals"
-              approvals={recentPending}
-              emptyMessage="No pending approvals right now."
-            />
-          </div>
+            );
+          })}
         </div>
       )}
+
+      <div className="view-data-card bot-page-body">
+        {/* ── KPI strip ── */}
+        <div className="bot-kpi-strip">
+          {[
+            { label: 'Claimed', value: claimed.length, color: 'var(--blue)' },
+            { label: 'Completed', value: completed, color: 'var(--green)' },
+            { label: 'Blocked', value: blocked, color: 'var(--amber)' },
+            { label: 'Rejected', value: rejected, color: 'var(--red)' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bot-kpi-item">
+              <span className="bot-kpi-value" style={{ color }}>{value}</span>
+              <span className="bot-kpi-label">{label}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Two-column: Outcomes + Live Claims ── */}
+        <div className="bot-mid-grid">
+          {/* Guardrail outcomes */}
+          <div className="bot-section">
+            <div className="bot-section-head">
+              <span className="bot-section-title">Guardrail Outcomes</span>
+            </div>
+            <div className="bot-outcomes">
+              {([
+                { key: 'APPROVED', label: 'Approved', color: 'var(--green)', badge: 'status-badge-green' },
+                { key: 'REJECTED', label: 'Rejected', color: 'var(--red)', badge: 'status-badge-red' },
+                { key: 'APPROVAL_REQUIRED', label: 'Need Approval', color: 'var(--amber)', badge: 'status-badge-amber' },
+              ] as const).map(({ key, label, color, badge }) => {
+                const count = outcomeCounts[key];
+                const pct = ((count / outcomeTotal) * 100).toFixed(0);
+                return (
+                  <div key={key} className="bot-outcome-row">
+                    <div className="bot-outcome-head">
+                      <span className={`status-badge ${badge}`}>
+                        <span className="status-badge-dot" aria-hidden="true" />
+                        {label}
+                      </span>
+                      <span className="bot-outcome-count">
+                        {count} <span className="bot-outcome-pct">{pct}%</span>
+                      </span>
+                    </div>
+                    <div className="progress-track" role="progressbar" aria-valuenow={count} aria-valuemax={outcomeTotal}>
+                      <div
+                        className="progress-bar"
+                        style={{ width: `${(count / outcomeTotal) * 100}%`, backgroundColor: color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Live claims */}
+          <div className="bot-section">
+            <div className="bot-section-head">
+              <span className="bot-section-title">Live Claims</span>
+              <span className="pricing-section-count">{claimed.length}</span>
+            </div>
+            {!botConnected ? (
+              <div className="bot-empty-state">
+                <Bot className="h-6 w-6" style={{ opacity: 0.3 }} aria-hidden="true" />
+                <p>No bot connected.</p>
+              </div>
+            ) : claimed.length === 0 ? (
+              <div className="bot-empty-state">
+                <p>No active claims right now.</p>
+              </div>
+            ) : (
+              <div className="bot-claim-list">
+                {claimed.map((o) => (
+                  <div key={o.order_id} className="bot-claim-row">
+                    <div className="bot-claim-info">
+                      <span className="pulse-dot pulse-dot-compact" aria-hidden="true" />
+                      <span className="bot-claim-waste">{o.declared_waste_type}</span>
+                      <span className="bot-claim-vol">{o.quantity_m3.toFixed(1)} m³</span>
+                      <span className="bot-claim-price">{money(o.offered_price_eur)}</span>
+                    </div>
+                    <span className="bot-claim-time">{elapsed(o.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── Recent Activity: 3 columns ── */}
+        <div className="bot-history-grid">
+          <div className="bot-section">
+            <div className="bot-section-head">
+              <span className="bot-section-title">Completed</span>
+              <span className="pricing-section-count">{recentCompleted.length}</span>
+            </div>
+            {recentCompleted.length === 0 ? (
+              <div className="bot-empty-state"><p>None yet.</p></div>
+            ) : (
+              <div className="bot-history-list">
+                {recentCompleted.map((o) => (
+                  <HistoryRow key={o.order_id} order={o} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bot-section">
+            <div className="bot-section-head">
+              <span className="bot-section-title">Rejected</span>
+              <span className="pricing-section-count">{recentRejected.length}</span>
+            </div>
+            {recentRejected.length === 0 ? (
+              <div className="bot-empty-state"><p>None yet.</p></div>
+            ) : (
+              <div className="bot-history-list">
+                {recentRejected.map((o) => (
+                  <HistoryRow key={o.order_id} order={o} />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bot-section">
+            <div className="bot-section-head">
+              <span className="bot-section-title">Pending Approvals</span>
+              <span className="pricing-section-count">{recentPending.length}</span>
+            </div>
+            {recentPending.length === 0 ? (
+              <div className="bot-empty-state"><p>None right now.</p></div>
+            ) : (
+              <div className="bot-history-list">
+                {recentPending.map((a) => (
+                  <div key={a.request_id} className="bot-history-item">
+                    <div className="bot-history-item-head">
+                      <span className="bot-history-item-title">{a.title}</span>
+                      <span className="bot-history-item-time">{elapsed(a.created_at)}</span>
+                    </div>
+                    <div className="bot-history-item-tags">
+                      <span className="ghost-pill">{a.bot_action.replace(/_/g, ' ')}</span>
+                      <span className="ghost-pill">{a.matched_rules.length} rule{a.matched_rules.length === 1 ? '' : 's'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
 
-function PendingApprovalColumn({
-  title,
-  approvals,
-  emptyMessage,
-}: {
-  title: string;
-  approvals: ApprovalItemDTO[];
-  emptyMessage: string;
-}) {
+function HistoryRow({ order }: { order: DisposalOrderDTO }) {
   return (
-    <div className="console-inset bot-decision-column p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="section-label !mb-0">{title}</span>
-        <span className="status-chip status-pending">{approvals.length}</span>
+    <div className="bot-history-item">
+      <div className="bot-history-item-head">
+        <span className="bot-history-item-title">{order.title}</span>
+        <span className="bot-history-item-time">{elapsed(order.created_at)}</span>
       </div>
-      {approvals.length === 0 ? (
-        <p className="text-xs text-[var(--text-secondary)]">{emptyMessage}</p>
-      ) : (
-        <div className="space-y-2">
-          {approvals.map((approval) => (
-            <div key={approval.request_id} className="bot-decision-item">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-[var(--text-primary)]">{approval.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
-                    <span>{approval.bot_action.replace(/_/g, ' ')}</span>
-                    <span>{approval.matched_rules.length} guardrail{approval.matched_rules.length === 1 ? '' : 's'}</span>
-                  </div>
-                </div>
-                <span className="section-label !text-[0.62rem] !tracking-[0.12em]">{elapsed(approval.created_at)}</span>
-              </div>
-              <p className="mt-2 text-xs leading-5 text-[var(--text-primary)]">"{approval.customer_request}"</p>
-              {approval.decision_summary && <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{approval.decision_summary}</p>}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DecisionColumn({
-  title,
-  orders,
-  emptyMessage,
-  outcome,
-}: {
-  title: string;
-  orders: DisposalOrderDTO[];
-  emptyMessage: string;
-  outcome: 'approved' | 'rejected';
-}) {
-  return (
-    <div className="console-inset bot-decision-column p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="section-label !mb-0">{title}</span>
-        <span className={`status-chip ${outcome === 'approved' ? 'status-approved' : 'status-rejected'}`}>{orders.length}</span>
+      <div className="bot-history-item-tags">
+        <span className="ghost-pill">{order.declared_waste_type}</span>
+        <span className="ghost-pill">{order.quantity_m3.toFixed(1)} m³</span>
+        {order.bot_action && (
+          <span className="ghost-pill">{order.bot_action.replace(/_/g, ' ')}</span>
+        )}
       </div>
-      {orders.length === 0 ? (
-        <p className="text-xs text-[var(--text-secondary)]">{emptyMessage}</p>
-      ) : (
-        <div className="space-y-2">
-          {orders.map((order) => (
-            <div key={order.order_id} className="bot-decision-item">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-medium text-[var(--text-primary)]">{order.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
-                    <span>{order.bot_action?.replace(/_/g, ' ') ?? 'unknown action'}</span>
-                    <span>{order.declared_waste_type}</span>
-                    <span>{order.quantity_m3.toFixed(1)} m3</span>
-                  </div>
-                </div>
-                <span className="section-label !text-[0.62rem] !tracking-[0.12em]">{elapsed(order.created_at)}</span>
-              </div>
-              {order.decision_summary && <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">{order.decision_summary}</p>}
-              {order.resolution && <p className="mt-2 text-xs leading-5 text-[var(--text-primary)]">{order.resolution}</p>}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

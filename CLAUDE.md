@@ -26,7 +26,7 @@ Dashboard (dashboard/ :5174) ← polls /api/v1/* ← CompanyAPI
 
 - **`support_company/`** — Domain models (`DisposalOrder`, `WasteContainer`, enums) and scenario generation (deterministic templates + optional LLM via OpenAI).
 - **`company_api/`** — FastAPI server (:8010) that runs the simulation. Manages virtual clock, order lifecycle, container fleet, economics, approvals, and pricing. Serves the dashboard static build at `/` if `dashboard/dist/` exists.
-- **`dashboard/`** — Standalone Vite + React + TypeScript + Tailwind CSS 4 app. Polls company server via Vite dev proxy (`/api` → `localhost:8010`). In production, set `VITE_API_BASE`.
+- **`dashboard/`** — Standalone Vite + React + TypeScript + Tailwind CSS 4 app. Polls company server via Vite dev proxy (`/api` → `localhost:8010`). In production, set `VITE_API_BASE`. Uses a CSS design-token system (`index.css`) with `night` and `dawn` theme variants. Pages: Overview, Approvals, Orders (paginated table + detail modal), Containers (visual fill-level shapes), Pricing (grouped tile layout), Bot Activity, Vision. Sidebar is always collapsed behind a hamburger menu; theme toggle lives inside the sidebar. SVG assets (logo, favicon) are in `dashboard/src/assets/`.
 - **`rule_packs/`** — JSON rule definitions loaded into Rule Engine at startup.
 
 ### Key Domain Model (`support_company/models.py`)

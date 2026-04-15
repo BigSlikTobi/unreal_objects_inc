@@ -1,6 +1,29 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BanknoteArrowDown, Bot, CircleHelp, Grid2x2, LayoutDashboard, MessagesSquare, MoonStar, Recycle, SunMedium, TimerReset } from 'lucide-react';
-import { fetchApprovals, fetchClock, fetchContainers, fetchEconomics, fetchOrders, fetchPricing, fetchStatus, finalizeApproval, voteOnApproval } from './api';
+import {
+  BanknoteArrowDown,
+  Bot,
+  CircleHelp,
+  Coins,
+  LayoutDashboard,
+  Menu,
+  MoonStar,
+  Recycle,
+  RefreshCcw,
+  SunMedium,
+  TimerReset,
+  X,
+} from 'lucide-react';
+import {
+  fetchApprovals,
+  fetchClock,
+  fetchContainers,
+  fetchEconomics,
+  fetchOrders,
+  fetchPricing,
+  fetchStatus,
+  finalizeApproval,
+  voteOnApproval,
+} from './api';
 import { usePolling } from './hooks/usePolling';
 import { ApprovalQueue } from './components/ApprovalQueue';
 import { KpiStrip } from './components/KpiStrip';
@@ -10,11 +33,12 @@ import { DecisionOutcomes } from './components/DecisionOutcomes';
 import { ContainerFleet } from './components/ContainerFleet';
 import { EconomicsPanel } from './components/EconomicsPanel';
 import { PricingPanel } from './components/PricingPanel';
-import { PerformanceView } from './components/PerformanceView';
-import { SystemsView } from './components/SystemsView';
 import { VisionView } from './components/VisionView';
 
-function formatCompanyAge(startedAt: string | null | undefined, virtualTime: string | null | undefined): string | null {
+function formatCompanyAge(
+  startedAt: string | null | undefined,
+  virtualTime: string | null | undefined,
+): string | null {
   if (!startedAt || !virtualTime) return null;
   const start = new Date(startedAt).getTime();
   const current = new Date(virtualTime).getTime();
@@ -37,57 +61,40 @@ type DashboardView =
   | 'containers'
   | 'pricing'
   | 'bot'
-  | 'performance'
-  | 'systems'
   | 'vision';
 
 type DashboardTheme = 'night' | 'dawn';
 
-const VIEW_META: Record<DashboardView, { title: string; description: string }> = {
-  overview: {
-    title: 'Overview',
-    description: 'Profit, bot posture, and company health at a glance.',
-  },
-  approvals: {
-    title: 'Approvals',
-    description: 'Every pending guardrail escalation that still needs a company decision.',
-  },
-  orders: {
-    title: 'Orders',
-    description: 'Live disposal intake and the current state of each customer order.',
-  },
-  containers: {
-    title: 'Containers',
-    description: 'Fleet capacity, fill levels, and operational pressure.',
-  },
-  pricing: {
-    title: 'Pricing',
-    description: 'Market-reference quotes and company action options for autonomous decisions.',
-  },
-  bot: {
-    title: 'Bot Activity',
-    description: 'How the external bot is engaging orders and how guardrails shape outcomes.',
-  },
-  performance: {
-    title: 'Performance',
-    description: 'Commercial quality, outcome mix, and current operational pressure.',
-  },
-  systems: {
-    title: 'Systems',
-    description: 'Runtime nodes, connectivity, and live company surfaces.',
-  },
-  vision: {
-    title: 'Vision',
-    description: 'Why this experiment exists and what it is trying to prove.',
-  },
+const VIEW_TITLES: Record<DashboardView, string> = {
+  overview: 'Overview',
+  approvals: 'Approvals',
+  orders: 'Orders',
+  containers: 'Containers',
+  pricing: 'Pricing',
+  bot: 'Bot Activity',
+  vision: 'Vision',
 };
+
+interface NavItem {
+  view: DashboardView;
+  label: string;
+  icon: React.ReactNode;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { view: 'overview', label: 'Overview', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { view: 'orders', label: 'Orders', icon: <BanknoteArrowDown className="h-4 w-4" /> },
+  { view: 'containers', label: 'Containers', icon: <Recycle className="h-4 w-4" /> },
+  { view: 'pricing', label: 'Pricing', icon: <Coins className="h-4 w-4" /> },
+  { view: 'bot', label: 'Bot Activity', icon: <Bot className="h-4 w-4" /> },
+  { view: 'vision', label: 'Vision', icon: <CircleHelp className="h-4 w-4" /> },
+];
 
 export function DashboardApp() {
   const [activeView, setActiveView] = useState<DashboardView>('overview');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<DashboardTheme>(() => {
-    if (typeof window === 'undefined') {
-      return 'night';
-    }
+    if (typeof window === 'undefined') return 'night';
     const stored = window.localStorage.getItem('uo_dashboard_theme');
     return stored === 'dawn' ? 'dawn' : 'night';
   });
@@ -95,6 +102,15 @@ export function DashboardApp() {
   useEffect(() => {
     window.localStorage.setItem('uo_dashboard_theme', theme);
   }, [theme]);
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const clockFetcher = useCallback(() => fetchClock(), []);
   const statusFetcher = useCallback(() => fetchStatus(), []);
@@ -117,9 +133,17 @@ export function DashboardApp() {
   const allOrders = orders.data?.orders ?? [];
   const allContainers = containers.data?.containers ?? [];
   const allApprovals = approvals.data?.approvals ?? [];
-  const currentView = VIEW_META[activeView];
-  const companyAge = formatCompanyAge(status.data?.current_run_started_at, status.data?.virtual_time);
+  const currentTitle = VIEW_TITLES[activeView];
+  const companyAge = formatCompanyAge(
+    status.data?.current_run_started_at,
+    status.data?.virtual_time,
+  );
   const claimedOrders = status.data?.stats.claimed_orders ?? 0;
+
+  function navigate(view: DashboardView) {
+    setActiveView(view);
+    setSidebarOpen(false);
+  }
 
   async function handleApprovalVote(requestId: string, approved: boolean) {
     await voteOnApproval(requestId, approved);
@@ -184,23 +208,7 @@ export function DashboardApp() {
       return (
         <div className="console-view-stack">
           <BotActivity orders={allOrders} approvals={allApprovals} status={status.data} />
-          <DecisionOutcomes orders={allOrders} />
         </div>
-      );
-    }
-
-    if (activeView === 'performance') {
-      return <PerformanceView orders={allOrders} economics={economics.data} containers={allContainers} />;
-    }
-
-    if (activeView === 'systems') {
-      return (
-        <SystemsView
-          apiHealthy={apiHealthy}
-          botConnected={botConnected}
-          status={status.data}
-          pricing={pricing.data}
-        />
       );
     }
 
@@ -208,34 +216,46 @@ export function DashboardApp() {
       return <VisionView />;
     }
 
+    // Overview
     return (
       <>
         <KpiStrip
           status={status.data}
           economics={economics.data}
-          pricingReferenceCount={(pricing.data?.market_quotes.length ?? 0) + (pricing.data?.operational_options.length ?? 0)}
+          pricingReferenceCount={
+            (pricing.data?.market_quotes.length ?? 0) +
+            (pricing.data?.operational_options.length ?? 0)
+          }
         />
         {claimedOrders > 0 && (
-          <button type="button" className="overview-claim-indicator" onClick={() => setActiveView('bot')}>
+          <button
+            type="button"
+            className="overview-claim-indicator"
+            onClick={() => navigate('bot')}
+            aria-label={`${claimedOrders} orders currently claimed by bot. Open Bot Activity`}
+          >
             <div className="overview-claim-indicator-dots" aria-hidden="true">
               {Array.from({ length: Math.min(claimedOrders, 10) }).map((_, index) => (
                 <span key={index} className="pulse-dot pulse-dot-compact" />
               ))}
             </div>
             <div className="overview-claim-indicator-copy">
-              <span className="section-label !mb-0">Live Bot Claim</span>
-              <span className="text-sm text-[var(--text-primary)]">
-                {status.data?.bot_identity ?? 'Bot'} currently claimed {claimedOrders} order{claimedOrders === 1 ? '' : 's'}
+              <span className="section-label" style={{ marginBottom: 0 }}>
+                Live Bot Claim
+              </span>
+              <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
+                {status.data?.bot_identity ?? 'Bot'} claimed {claimedOrders} order
+                {claimedOrders === 1 ? '' : 's'}
               </span>
             </div>
-            <span className="ghost-pill">Open Bot Activity</span>
+            <span className="ghost-pill ghost-pill-button">Open Bot Activity</span>
           </button>
         )}
         <div className="console-grid">
-          <div className="console-column min-h-0">
+          <div className="console-column">
             <EconomicsPanel economics={economics.data} />
           </div>
-          <div className="console-column min-h-0">
+          <div className="console-column">
             <DecisionOutcomes orders={allOrders} />
           </div>
         </div>
@@ -245,81 +265,94 @@ export function DashboardApp() {
           onVote={handleApprovalVote}
           onFinalize={handleApprovalFinalize}
           mode="featured"
-          onOpenAll={() => setActiveView('approvals')}
+          onOpenAll={() => navigate('approvals')}
         />
       </>
     );
   }
 
   return (
-    <div className={`dashboard-shell ${theme === 'dawn' ? 'theme-dawn' : 'theme-night'}`}>
+    <div className={`dashboard-shell ${theme === 'dawn' ? 'theme-dawn' : ''}`}>
+      {/* Mobile sidebar backdrop */}
+      <div
+        className={`rail-backdrop ${sidebarOpen ? 'rail-open' : ''}`}
+        onClick={() => setSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <div className="dashboard-layout">
-        <aside className="command-rail">
+        {/* ── Sidebar ── */}
+        <aside id="sidebar-nav" className={`command-rail ${sidebarOpen ? 'rail-open' : ''}`} aria-label="Main navigation">
+          {/* Brand */}
           <div className="rail-brand">
-            <div className="rail-brand-emblem">
-              <Grid2x2 className="h-4 w-4" />
+            <img
+              src={new URL('./assets/unreal_objects.svg', import.meta.url).href}
+              alt="Unreal Objects"
+              className="rail-brand-logo"
+            />
+            <div className="rail-brand-text">
+              <span className="rail-brand-mark">Unreal Terminal</span>
+              <span className="rail-brand-sub">waste ops</span>
             </div>
-            <div className="rail-brand-mark">Unreal Terminal</div>
-            <div className="rail-brand-sub">waste ops stable</div>
           </div>
 
-          <div>
-            <div className="rail-section-title">Operations</div>
-            <nav className="rail-nav rail-nav-primary" aria-label="Operations">
-              <button type="button" className={`rail-link ${activeView === 'overview' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('overview')}>
-                <LayoutDashboard className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Overview</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'orders' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('orders')}>
-                <BanknoteArrowDown className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Orders</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'containers' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('containers')}>
-                <Recycle className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Containers</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'pricing' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('pricing')}>
-                <BanknoteArrowDown className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Pricing</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'bot' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('bot')}>
-                <Bot className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Bot Activity</span></div>
-              </button>
+          {/* Nav */}
+          <div className="rail-body">
+            <nav className="rail-nav" aria-label="Main navigation">
+              {NAV_ITEMS.map(({ view, label, icon }) => (
+                <button
+                  key={view}
+                  type="button"
+                  className={`rail-link ${activeView === view ? 'rail-link-active' : ''}`}
+                  onClick={() => navigate(view)}
+                  aria-current={activeView === view ? 'page' : undefined}
+                >
+                  <span className="rail-link-icon" aria-hidden="true">{icon}</span>
+                  <span className="rail-link-label">{label}</span>
+                </button>
+              ))}
             </nav>
           </div>
 
-          <div>
-            <div className="rail-section-title">Research</div>
-            <nav className="rail-nav rail-nav-primary" aria-label="Research">
-              <button type="button" className={`rail-link ${activeView === 'performance' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('performance')}>
-                <LayoutDashboard className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Performance</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'systems' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('systems')}>
-                <Grid2x2 className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Systems</span></div>
-              </button>
-              <button type="button" className={`rail-link ${activeView === 'vision' ? 'rail-link-active' : ''}`} onClick={() => setActiveView('vision')}>
-                <CircleHelp className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy"><span className="rail-link-label">Vision</span></div>
-              </button>
-            </nav>
-          </div>
-
+          {/* Footer */}
           <div className="rail-footer">
-            <nav className="rail-nav rail-nav-utility" aria-label="Utility">
-              <div className="rail-link rail-link-utility">
-                <MessagesSquare className="h-4 w-4 rail-link-icon" />
-                <div className="rail-link-copy">
-                  <span className="rail-link-label">Discord</span>
-                  <span className="rail-link-meta">Coming soon</span>
-                </div>
-              </div>
-            </nav>
+            {/* Status badges */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem' }}>
+              <span
+                className={`status-badge ${apiHealthy ? 'status-badge-green' : 'status-badge-red'}`}
+                style={{ justifyContent: 'flex-start' }}
+              >
+                <span className="status-badge-dot" aria-hidden="true" />
+                {apiHealthy ? 'API Online' : 'API Offline'}
+              </span>
+              <span
+                className={`status-badge ${botConnected ? 'status-badge-green' : 'status-badge-neutral'}`}
+                style={{ justifyContent: 'flex-start' }}
+              >
+                <span className="status-badge-dot" aria-hidden="true" />
+                {botConnected ? 'Bot Connected' : 'Bot Offline'}
+              </span>
+            </div>
+
+            {/* Theme toggle */}
+            <button
+              type="button"
+              className="theme-toggle-button"
+              onClick={() => setTheme((t) => (t === 'night' ? 'dawn' : 'night'))}
+              aria-label={
+                theme === 'night' ? 'Switch to light mode' : 'Switch to dark mode'
+              }
+            >
+              {theme === 'night' ? (
+                <SunMedium className="h-3.5 w-3.5" aria-hidden="true" />
+              ) : (
+                <MoonStar className="h-3.5 w-3.5" aria-hidden="true" />
+              )}
+              <span>{theme === 'night' ? 'Light mode' : 'Dark mode'}</span>
+            </button>
 
             <div className="operator-card">
-              <div className="operator-avatar">WM</div>
+              <div className="operator-avatar" aria-hidden="true">WM</div>
               <div className="operator-meta">
                 <span className="operator-name">Waste Operations</span>
                 <span className="operator-status">Autonomous</span>
@@ -328,37 +361,69 @@ export function DashboardApp() {
           </div>
         </aside>
 
-        <main className="console-main">
-          <section className="console-view-header">
-            <div>
-              <p className="console-panel-kicker">Workspace</p>
-              <h1 className="console-panel-title">{currentView.title}</h1>
-              <p className="console-view-copy">{currentView.description}</p>
-            </div>
-            <div className="console-panel-actions">
+        {/* ── Main ── */}
+        <main className="console-main" id="main-content">
+          {/* Sticky header */}
+          <header className="console-view-header">
+            <div className="console-view-header-left">
               <button
                 type="button"
-                className="theme-toggle-button"
-                onClick={() => setTheme((current) => (current === 'night' ? 'dawn' : 'night'))}
-                title={theme === 'night' ? 'Switch to brighter mode' : 'Switch to darker mode'}
+                className="hamburger-button"
+                onClick={() => setSidebarOpen((o) => !o)}
+                aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+                aria-expanded={sidebarOpen}
+                aria-controls="sidebar-nav"
               >
-                {theme === 'night' ? <SunMedium className="h-3.5 w-3.5" /> : <MoonStar className="h-3.5 w-3.5" />}
-                <span>{theme === 'night' ? 'Bright mode' : 'Night mode'}</span>
+                {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>
+
+              <div className="console-view-header-title">
+                <p className="console-panel-kicker">Workspace</p>
+                <h1 className="console-panel-title">{currentTitle}</h1>
+              </div>
+            </div>
+
+            <div className="console-panel-actions">
+              {/* Company age */}
               {companyAge && (
-                <span className="run-age-pill" title="Virtual age of the current company run">
-                  <TimerReset className="h-3.5 w-3.5" />
-                  <span className="run-age-label">Company Age</span>
+                <span
+                  className="run-age-pill"
+                  title="Virtual age of the current company run"
+                  aria-label={`Company age: ${companyAge}`}
+                >
+                  <TimerReset className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span className="run-age-label">Age</span>
                   <strong className="run-age-value">{companyAge}</strong>
                 </span>
               )}
-              <span className="ghost-pill">{apiHealthy ? 'API online' : 'API offline'}</span>
-              <span className="ghost-pill">{botConnected ? 'Bot connected' : 'Bot offline'}</span>
-              {clock.data && <span className="ghost-pill">{clock.data.acceleration}x</span>}
-              {clock.data && <span className="ghost-pill">{clock.data.day_of_week}</span>}
+
+              {/* Bankruptcy count */}
+              <span
+                className={`ghost-pill ${(status.data?.stats.bankruptcy_count ?? 0) > 0 ? 'ghost-pill-danger' : ''}`}
+                title={`Company run #${status.data?.current_run_id ?? 1}`}
+                aria-label={`${status.data?.stats.bankruptcy_count ?? 0} bankruptcies, run #${status.data?.current_run_id ?? 1}`}
+              >
+                <RefreshCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>{status.data?.stats.bankruptcy_count ?? 0}</span>
+              </span>
+
+              {/* Clock info */}
+              {clock.data && (
+                <span className="ghost-pill" aria-label={`Speed: ${clock.data.acceleration}x`}>
+                  {clock.data.acceleration}x
+                </span>
+              )}
+              {clock.data && (
+                <span className="ghost-pill">{clock.data.day_of_week}</span>
+              )}
             </div>
-          </section>
-          {renderMainView()}
+          </header>
+
+          {/* Content */}
+          <div className="console-body">
+            {/* Description under header */}
+            {renderMainView()}
+          </div>
         </main>
       </div>
     </div>
