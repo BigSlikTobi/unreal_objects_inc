@@ -25,7 +25,7 @@ Major economics and container-management session. Payment timing was fixed to en
 
 ### Dashboard cleanup (PR #5)
 - Removed the Guardrails tab from the dashboard; rule management lives in the `unreal_objects` repo, not here.
-- Added `--order-interval` CLI flag to `uo-company-server` (default: 60s real-time between orders), making simulation pace configurable without code changes.
+- Added `--order-interval` CLI flag to `uo-company-server` (default: 120s real-time between orders), making simulation pace configurable without code changes.
 
 ### Production branch
 - Created a dedicated `production` branch for Railway deploy isolation; PRs targeting Railway deploys merge there rather than directly to main.
