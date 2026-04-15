@@ -140,6 +140,7 @@ class CompanySimulationService:
         self._order_seed_offset = 0
         self._current_run_id = 1
         self._arrival_rng = random.Random(seed + 91_337)
+        self._pending_count = 0  # incremental counter for OPEN + CLAIMED orders
         self.bot_identity: str | None = None
         self.bot_last_seen_at: datetime | None = None
         self.claimed_at: dict[str, datetime] = {}
@@ -233,6 +234,7 @@ class CompanySimulationService:
             self.source_orders[order.order_id] = order
             if event is not None:
                 self.source_events[order.order_id] = event
+            self._pending_count += 1  # new order is OPEN
         return dto
 
     def _current_financial_context(self) -> dict[str, object]:
@@ -440,6 +442,7 @@ class CompanySimulationService:
                 raise ValueError(f"Order {order_id} cannot accept a bot result from status {record.dto.status}")
             if record.dto.assigned_to is not None and record.dto.assigned_to != bot_id:
                 raise ValueError(f"Order {order_id} is assigned to {record.dto.assigned_to}, not {bot_id}")
+            was_pending = record.dto.status in (OrderStatus.OPEN.value, OrderStatus.CLAIMED.value)
             order = self.source_orders[order_id]
 
             record.dto.assigned_to = bot_id
@@ -454,6 +457,9 @@ class CompanySimulationService:
                 self._build_projected_action_economics(order, bot_action=bot_action, action_payload=payload).as_guardrail_context()
             )
             self._mark_bot_seen(bot_id)
+
+            if was_pending:
+                self._pending_count -= 1
 
             if outcome == BotDecisionOutcome.APPROVAL_REQUIRED:
                 record.dto.status = OrderStatus.BLOCKED.value
@@ -733,6 +739,7 @@ class CompanySimulationService:
             self.records = {}
             self.source_orders = {}
             self.source_events = {}
+            self._pending_count = 0
             self.containers = {
                 container.container_id: container
                 for container in generate_container_fleet(seed=self.seed + seed_offset, now=now)
@@ -992,11 +999,7 @@ class CompanySimulationService:
 
     def _next_generation_delay_seconds(self) -> float:
         # Backpressure: scale delay based on unprocessed order count
-        pending = sum(
-            1
-            for r in self.records.values()
-            if r.dto.status in (OrderStatus.OPEN.value, OrderStatus.CLAIMED.value)
-        )
+        pending = self._pending_count
         if pending <= 2:
             multiplier = 0.5  # bots are idle, speed up
         elif pending <= 5:
@@ -1317,4 +1320,8 @@ class CompanySimulationService:
                 order_id: datetime.fromisoformat(ts)
                 for order_id, ts in payload.get("claimed_at", {}).items()
             }
+            self._pending_count = sum(
+                1 for r in self.records.values()
+                if r.dto.status in (OrderStatus.OPEN.value, OrderStatus.CLAIMED.value)
+            )
         return True

@@ -139,18 +139,25 @@ export function CaseFeed({ orders }: Props) {
                       key={order.order_id}
                       className="order-table-row"
                       onClick={() => setSelectedOrder(order)}
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') setSelectedOrder(order);
-                      }}
-                      role="button"
-                      aria-label={`View order ${order.order_id.slice(0, 8)}`}
                     >
                       <td>
-                        <div className="order-cell-primary">
+                        <button
+                          type="button"
+                          className="order-cell-primary"
+                          onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setSelectedOrder(order);
+                            } else if (e.key === ' ') {
+                              e.preventDefault();
+                              setSelectedOrder(order);
+                            }
+                          }}
+                          aria-label={`View order ${order.order_id.slice(0, 8)}`}
+                        >
                           <span className="order-cell-id">{order.order_id.slice(0, 8)}</span>
                           <span className="order-cell-title">{order.title}</span>
-                        </div>
+                        </button>
                       </td>
                       <td>
                         <span className="ghost-pill">{order.declared_waste_type}</span>

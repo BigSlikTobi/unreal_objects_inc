@@ -282,7 +282,7 @@ export function DashboardApp() {
 
       <div className="dashboard-layout">
         {/* ── Sidebar ── */}
-        <aside className={`command-rail ${sidebarOpen ? 'rail-open' : ''}`} aria-label="Main navigation">
+        <aside id="sidebar-nav" className={`command-rail ${sidebarOpen ? 'rail-open' : ''}`} aria-label="Main navigation">
           {/* Brand */}
           <div className="rail-brand">
             <img
@@ -372,7 +372,7 @@ export function DashboardApp() {
                 onClick={() => setSidebarOpen((o) => !o)}
                 aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
                 aria-expanded={sidebarOpen}
-                aria-controls="main-content"
+                aria-controls="sidebar-nav"
               >
                 {sidebarOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>

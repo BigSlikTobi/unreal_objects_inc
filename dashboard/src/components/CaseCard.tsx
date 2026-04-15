@@ -57,7 +57,10 @@ export function CaseCard({ c }: Props) {
       aria-expanded={expanded}
       onClick={() => setExpanded(!expanded)}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') setExpanded(!expanded);
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+          e.preventDefault();
+          setExpanded(!expanded);
+        }
       }}
     >
       <div className="feed-card-inner">

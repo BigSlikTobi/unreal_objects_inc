@@ -210,19 +210,78 @@ async def test_bounded_rolling_mode_seeds_small_bootstrap_and_then_trickles_orde
     assert later_total <= 5
 
 
-def test_generation_delay_stays_within_stress_window():
+@pytest.mark.parametrize(
+    "pending_count, expected_multiplier",
+    [
+        (0, 0.5),   # idle bots, speed up
+        (2, 0.5),   # still <= 2
+        (3, 1.0),   # normal pace
+        (5, 1.0),   # still <= 5
+        (6, 2.0),   # bots busy, slow down
+        (10, 2.0),  # still <= 10
+        (11, 4.0),  # heavily backed up
+        (20, 4.0),  # still > 10
+    ],
+)
+def test_generation_delay_backpressure_ranges(pending_count, expected_multiplier):
     from company_api.service import DEFAULT_ORDER_INTERVAL_REAL_SECONDS
     service = CompanySimulationService(initial_order_count=0, seed=42)
+    service._pending_count = pending_count
 
     samples = [service._next_generation_delay_seconds() for _ in range(20)]
 
-    # With 0 pending orders the backpressure multiplier is 0.5x,
-    # so the effective base is half the default interval.
-    effective_base = DEFAULT_ORDER_INTERVAL_REAL_SECONDS * 0.5
+    effective_base = DEFAULT_ORDER_INTERVAL_REAL_SECONDS * expected_multiplier
     assert all(
         (effective_base * 0.75) <= sample <= (effective_base * 1.25)
         for sample in samples
     )
+
+
+@pytest.mark.asyncio
+async def test_pending_count_tracks_order_lifecycle():
+    """Verify _pending_count stays in sync through ingest → claim → submit."""
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+
+    assert service._pending_count == 0
+
+    # Ingest two orders → both OPEN
+    order1 = make_order("pc-1")
+    order2 = make_order("pc-2")
+    await service.ingest_order(order1)
+    await service.ingest_order(order2)
+    assert service._pending_count == 2
+
+    # Claim one → still pending (CLAIMED counts as pending)
+    await service.claim_order("pc-1", "bot-1")
+    assert service._pending_count == 2
+
+    # Release it → back to OPEN, still pending
+    await service.release_order("pc-1", "bot-1")
+    assert service._pending_count == 2
+
+    # Complete one via submit_order_result
+    container = next(
+        c for c in service.containers.values()
+        if c.waste_type == WasteType.RECYCLING
+    )
+    await service.submit_order_result(
+        order_id="pc-1",
+        bot_id="bot-1",
+        outcome=BotDecisionOutcome.APPROVED,
+        bot_action="accept_and_route",
+        action_payload={"target_container_id": container.container_id},
+    )
+    assert service._pending_count == 1
+
+    # Reject the other
+    await service.submit_order_result(
+        order_id="pc-2",
+        bot_id="bot-1",
+        outcome=BotDecisionOutcome.REJECTED,
+        bot_action="reject_order",
+    )
+    assert service._pending_count == 0
 
 
 @pytest.mark.asyncio

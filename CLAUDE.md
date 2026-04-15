@@ -69,7 +69,7 @@ Tests use `pytest-asyncio` (auto mode) and `pytest-httpx` for HTTP mocking. Conf
 uo-company-server --acceleration 10 --no-ai   # runs on :8010
 ```
 
-The `--no-ai` flag uses template-only generation (no OpenAI key needed). `--acceleration` controls virtual clock speed. `--order-interval` sets real-time seconds between generated orders (default: 60).
+The `--no-ai` flag uses template-only generation (no OpenAI key needed). `--acceleration` controls virtual clock speed. `--order-interval` sets real-time seconds between generated orders (default: 120).
 
 ### Backend Services (Unreal Objects submodule)
 
