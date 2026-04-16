@@ -61,6 +61,7 @@ from .models import (
     WasteEventDTO,
 )
 
+APPROVAL_EXPIRY_VIRTUAL_HOURS = 48
 CONTINUOUS_BOOTSTRAP_ORDERS = 2
 DEFAULT_ACCELERATION = 24
 DEFAULT_ORDER_INTERVAL_REAL_SECONDS = 120.0
@@ -620,7 +621,12 @@ class CompanySimulationService:
     async def get_approvals(self) -> list[ApprovalItemDTO]:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
-            items = [self._approval_item_from_record(record) for record in self.records.values() if record.dto.status == OrderStatus.BLOCKED.value]
+            items = [
+                self._approval_item_from_record(record)
+                for record in self.records.values()
+                if record.dto.status == OrderStatus.BLOCKED.value
+                and (record.dto.request_id or "") not in self.final_decisions
+            ]
         items.sort(key=lambda item: item.created_at, reverse=True)
         return items
 
@@ -652,7 +658,22 @@ class CompanySimulationService:
                 decided_at=isoformat(self._virtual_now()) or "",
             )
             if approved:
-                self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload or {})
+                try:
+                    self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload or {})
+                except Exception:
+                    # If the action can no longer be applied (e.g. container removed),
+                    # reject instead of leaving the approval permanently stuck.
+                    record.dto.status = OrderStatus.REJECTED.value
+                    record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
+                    record.dto.resolution = "Approval could not be applied — the action is no longer valid."
+                    final_state = BotDecisionOutcome.REJECTED.value
+                    await self._persist_state_locked()
+                    return ApprovalFinalizeResponse(
+                        request_id=request_id,
+                        order_id=record.dto.order_id,
+                        status=record.dto.status,
+                        final_state=final_state,
+                    )
                 record.dto.decision_outcome = BotDecisionOutcome.APPROVED.value
                 if rationale:
                     record.dto.resolution = rationale
@@ -712,8 +733,10 @@ class CompanySimulationService:
         while True:
             await asyncio.sleep(max(1.0, 60 / max(self.acceleration, 1)))
             async with self._lock:
-                self._refresh_runtime_locked(self._virtual_now())
+                now = self._virtual_now()
+                self._refresh_runtime_locked(now)
                 self._expire_stale_claims_locked()
+                self._expire_stale_approvals_locked(now)
                 await self._persist_state_locked()
 
     def _expire_stale_claims_locked(self) -> None:
@@ -730,6 +753,25 @@ class CompanySimulationService:
                 record.dto.status = OrderStatus.OPEN.value
                 record.dto.assigned_to = None
             self.claimed_at.pop(order_id, None)
+
+    def _expire_stale_approvals_locked(self, now: datetime) -> None:
+        """Auto-reject BLOCKED orders that have been waiting longer than the approval expiry window."""
+        cutoff = now - timedelta(hours=APPROVAL_EXPIRY_VIRTUAL_HOURS)
+        for record in self.records.values():
+            if record.dto.status != OrderStatus.BLOCKED.value:
+                continue
+            if record.sort_created_at >= cutoff:
+                continue
+            request_id = record.dto.request_id or ""
+            if request_id in self.final_decisions:
+                # Already decided but stuck in BLOCKED — force transition.
+                record.dto.status = OrderStatus.REJECTED.value
+                record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
+                record.dto.resolution = record.dto.resolution or "Approval was decided but the action could not be applied."
+            else:
+                record.dto.status = OrderStatus.REJECTED.value
+                record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
+                record.dto.resolution = "Approval expired — no decision was made within the allowed window."
 
     async def _reset_live_company_state(self, seed_offset: int) -> None:
         async with self._lock:
