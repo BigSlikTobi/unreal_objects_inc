@@ -226,6 +226,34 @@ def build_app(
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Failed to finalize approval with Unreal Objects: {exc}") from exc
 
+    @app.post("/api/v1/approvals/by-order/{order_id}/vote")
+    async def vote_on_approval_by_order(order_id: str, payload: ApprovalVoteRequest):
+        if not service.public_voting_enabled:
+            raise HTTPException(status_code=404, detail="Public voting is disabled")
+        try:
+            return await service.record_public_vote_by_order(order_id=order_id, approved=payload.approved)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Approval request not found") from exc
+
+    @app.post("/api/v1/approvals/by-order/{order_id}/finalize")
+    async def finalize_approval_by_order(
+        order_id: str,
+        payload: ApprovalFinalizeRequest,
+        x_operator_token: str | None = Header(default=None),
+    ):
+        require_operator(x_operator_token)
+        try:
+            return await service.finalize_approval_by_order(
+                order_id=order_id,
+                approved=payload.approved,
+                reviewer=payload.reviewer,
+                rationale=payload.rationale,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Approval request not found") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to finalize approval with Unreal Objects: {exc}") from exc
+
     @app.post("/api/v1/webhooks/orders", response_model=OrdersResponse, status_code=202)
     async def orders_webhook(payload: DisposalOrderWebhookPayload):
         accepted = []

@@ -625,7 +625,7 @@ class CompanySimulationService:
                 self._approval_item_from_record(record)
                 for record in self.records.values()
                 if record.dto.status == OrderStatus.BLOCKED.value
-                and (record.dto.request_id or "") not in self.final_decisions
+                and self._approval_key(record) not in self.final_decisions
             ]
         items.sort(key=lambda item: item.created_at, reverse=True)
         return items
@@ -634,64 +634,87 @@ class CompanySimulationService:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
             record = self._require_blocked_record_by_request_id(request_id)
-            vote_state = self.approval_votes.setdefault(request_id, ApprovalVoteState())
-            if approved:
-                vote_state.approve_votes += 1
-            else:
-                vote_state.reject_votes += 1
-            item = self._approval_item_from_record(record)
-            await self._persist_state_locked()
-            return item
+            return await self._record_vote_locked(record, approved)
+
+    async def record_public_vote_by_order(self, order_id: str, approved: bool) -> ApprovalItemDTO:
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self._require_blocked_record_by_order_id(order_id)
+            return await self._record_vote_locked(record, approved)
+
+    async def _record_vote_locked(self, record: OrderRecord, approved: bool) -> ApprovalItemDTO:
+        key = self._approval_key(record)
+        vote_state = self.approval_votes.setdefault(key, ApprovalVoteState())
+        if approved:
+            vote_state.approve_votes += 1
+        else:
+            vote_state.reject_votes += 1
+        item = self._approval_item_from_record(record)
+        await self._persist_state_locked()
+        return item
 
     async def finalize_approval(self, request_id: str, approved: bool, reviewer: str, rationale: str | None = None) -> ApprovalFinalizeResponse:
-        # Apply locally first, then notify Decision Center.
-        # This prevents the state where DC resolves but the local apply crashes,
-        # leaving the approval permanently stuck (DC returns 409 on retries).
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
             record = self._require_blocked_record_by_request_id(request_id)
-            order = self.source_orders[record.dto.order_id]
-            self.final_decisions[request_id] = ApprovalDecisionMetadata(
-                approved=approved,
-                reviewer=reviewer,
-                rationale=rationale,
-                decided_at=isoformat(self._virtual_now()) or "",
-            )
-            if approved:
-                try:
-                    self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload or {})
-                except Exception:
-                    # If the action can no longer be applied (e.g. container removed),
-                    # reject instead of leaving the approval permanently stuck.
-                    record.dto.status = OrderStatus.REJECTED.value
-                    record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
-                    record.dto.resolution = "Approval could not be applied — the action is no longer valid."
-                    final_state = BotDecisionOutcome.REJECTED.value
-                    await self._persist_state_locked()
-                    return ApprovalFinalizeResponse(
-                        request_id=request_id,
-                        order_id=record.dto.order_id,
-                        status=record.dto.status,
-                        final_state=final_state,
-                    )
-                record.dto.decision_outcome = BotDecisionOutcome.APPROVED.value
-                if rationale:
-                    record.dto.resolution = rationale
-                await self._check_bankruptcy_locked()
-                final_state = BotDecisionOutcome.APPROVED.value
-            else:
+            return await self._finalize_approval_locked(record, approved, reviewer, rationale)
+
+    async def finalize_approval_by_order(self, order_id: str, approved: bool, reviewer: str, rationale: str | None = None) -> ApprovalFinalizeResponse:
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self._require_blocked_record_by_order_id(order_id)
+            return await self._finalize_approval_locked(record, approved, reviewer, rationale)
+
+    async def _finalize_approval_locked(self, record: OrderRecord, approved: bool, reviewer: str, rationale: str | None) -> ApprovalFinalizeResponse:
+        # Apply locally first, then notify Decision Center.
+        # This prevents the state where DC resolves but the local apply crashes,
+        # leaving the approval permanently stuck (DC returns 409 on retries).
+        request_id = record.dto.request_id or ""
+        key = self._approval_key(record)
+        order = self.source_orders[record.dto.order_id]
+        self.final_decisions[key] = ApprovalDecisionMetadata(
+            approved=approved,
+            reviewer=reviewer,
+            rationale=rationale,
+            decided_at=isoformat(self._virtual_now()) or "",
+        )
+        if approved:
+            try:
+                self._apply_approved_action(record.dto, order, bot_action=record.dto.bot_action or "", payload=record.dto.action_payload or {})
+            except Exception:
+                # If the action can no longer be applied (e.g. container removed),
+                # reject instead of leaving the approval permanently stuck.
                 record.dto.status = OrderStatus.REJECTED.value
                 record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
-                record.dto.resolution = rationale or "Operator rejected the pending approval request."
+                record.dto.resolution = "Approval could not be applied — the action is no longer valid."
                 final_state = BotDecisionOutcome.REJECTED.value
-            await self._persist_state_locked()
+                await self._persist_state_locked()
+                return ApprovalFinalizeResponse(
+                    request_id=request_id,
+                    order_id=record.dto.order_id,
+                    status=record.dto.status,
+                    final_state=final_state,
+                )
+            record.dto.decision_outcome = BotDecisionOutcome.APPROVED.value
+            if rationale:
+                record.dto.resolution = rationale
+            await self._check_bankruptcy_locked()
+            final_state = BotDecisionOutcome.APPROVED.value
+        else:
+            record.dto.status = OrderStatus.REJECTED.value
+            record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
+            record.dto.resolution = rationale or "Operator rejected the pending approval request."
+            final_state = BotDecisionOutcome.REJECTED.value
+        await self._persist_state_locked()
 
-        # Notify Decision Center after local state is committed.
-        # If this fails (409, timeout, etc.) the local state is already correct.
-        try:
-            await self._submit_unreal_objects_approval(request_id=request_id, approved=approved, approver=reviewer)
-        except Exception:
-            pass
+        # Notify Decision Center after local state is committed. Only meaningful
+        # when we actually have a DC request_id — otherwise this is a local-only
+        # cleanup and DC has nothing to resolve.
+        if request_id:
+            try:
+                await self._submit_unreal_objects_approval(request_id=request_id, approved=approved, approver=reviewer)
+            except Exception:
+                pass
 
         return ApprovalFinalizeResponse(
             request_id=request_id,
@@ -762,8 +785,8 @@ class CompanySimulationService:
                 continue
             if record.sort_created_at >= cutoff:
                 continue
-            request_id = record.dto.request_id or ""
-            if request_id in self.final_decisions:
+            key = self._approval_key(record)
+            if key in self.final_decisions:
                 # Already decided but stuck in BLOCKED — force transition.
                 record.dto.status = OrderStatus.REJECTED.value
                 record.dto.decision_outcome = BotDecisionOutcome.REJECTED.value
@@ -1186,12 +1209,26 @@ class CompanySimulationService:
                 return record
         raise KeyError(request_id)
 
+    def _require_blocked_record_by_order_id(self, order_id: str) -> OrderRecord:
+        record = self.records.get(order_id)
+        if record is None or record.dto.status != OrderStatus.BLOCKED.value:
+            raise KeyError(order_id)
+        return record
+
+    def _approval_key(self, record: OrderRecord) -> str:
+        """Stable key for approval vote tallies and final-decision records.
+
+        Prefers the Decision Center request_id when the bot supplied one, falling
+        back to order_id so approvals without a DC handle still have a unique key.
+        """
+        return record.dto.request_id or record.dto.order_id
+
     def _approval_item_from_record(self, record: OrderRecord) -> ApprovalItemDTO:
         dto = self._hydrate_disposal_order_dto(record)
-        request_id = record.dto.request_id or ""
-        votes = self.approval_votes.get(request_id, ApprovalVoteState())
+        key = self._approval_key(record)
+        votes = self.approval_votes.get(key, ApprovalVoteState())
         return ApprovalItemDTO(
-            request_id=request_id,
+            request_id=record.dto.request_id or "",
             order_id=dto.order_id,
             title=dto.title,
             customer_request=dto.customer_request,
@@ -1207,7 +1244,7 @@ class CompanySimulationService:
                 "reject_votes": votes.reject_votes,
                 "total_votes": votes.approve_votes + votes.reject_votes,
             },
-            final_decision=self.final_decisions.get(request_id),
+            final_decision=self.final_decisions.get(key),
         )
 
     async def _submit_unreal_objects_approval(self, request_id: str, approved: bool, approver: str) -> None:

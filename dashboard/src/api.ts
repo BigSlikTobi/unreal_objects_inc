@@ -29,8 +29,8 @@ export const fetchEconomics = () => fetchJSON<EconomicsSnapshot>('/economics');
 export const fetchPricing = () => fetchJSON<PricingCatalogResponse>('/pricing');
 export const fetchApprovals = () => fetchJSON<ApprovalsResponse>('/approvals');
 
-export async function voteOnApproval(requestId: string, approved: boolean): Promise<ApprovalItemDTO> {
-  return fetchJSON<ApprovalItemDTO>(`/approvals/${requestId}/vote`, {
+export async function voteOnApproval(orderId: string, approved: boolean): Promise<ApprovalItemDTO> {
+  return fetchJSON<ApprovalItemDTO>(`/approvals/by-order/${encodeURIComponent(orderId)}/vote`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ approved }),
@@ -38,11 +38,11 @@ export async function voteOnApproval(requestId: string, approved: boolean): Prom
 }
 
 export async function finalizeApproval(
-  requestId: string,
+  orderId: string,
   payload: { approved: boolean; reviewer: string; rationale?: string | null },
   operatorToken?: string,
 ): Promise<{ request_id: string; order_id: string; status: string; final_state: string }> {
-  return fetchJSON(`/approvals/${requestId}/finalize`, {
+  return fetchJSON(`/approvals/by-order/${encodeURIComponent(orderId)}/finalize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

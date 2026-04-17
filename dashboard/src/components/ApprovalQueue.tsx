@@ -7,8 +7,8 @@ const VOTE_COOLDOWN_MS = 5_000;
 interface Props {
   approvals: ApprovalItemDTO[];
   status: CompanyStatus | null;
-  onVote: (requestId: string, approved: boolean) => Promise<void>;
-  onFinalize: (requestId: string, approved: boolean, reviewer: string, rationale?: string | null, operatorToken?: string) => Promise<void>;
+  onVote: (orderId: string, approved: boolean) => Promise<void>;
+  onFinalize: (orderId: string, approved: boolean, reviewer: string, rationale?: string | null, operatorToken?: string) => Promise<void>;
   mode?: 'queue' | 'featured';
   onOpenAll?: () => void;
 }
@@ -30,7 +30,7 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
   const [finalizeBusyAction, setFinalizeBusyAction] = useState<string | null>(null);
   const [optimisticVotes, setOptimisticVotes] = useState<Record<string, { approve: number; reject: number }>>({});
   const [voteCooldownUntil, setVoteCooldownUntil] = useState<Record<string, number>>({});
-  const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isFeatured = mode === 'featured';
   const visibleApprovals = isFeatured
@@ -42,12 +42,12 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
     localStorage.setItem('uo_operator_reviewer', nextReviewer);
   }
 
-  function voteLocked(requestId: string): boolean {
-    return (voteCooldownUntil[requestId] ?? 0) > Date.now();
+  function voteLocked(orderId: string): boolean {
+    return (voteCooldownUntil[orderId] ?? 0) > Date.now();
   }
 
   function displayedVoteSummary(approval: ApprovalItemDTO) {
-    const optimistic = optimisticVotes[approval.request_id];
+    const optimistic = optimisticVotes[approval.order_id];
     const approveVotes = approval.vote_summary.approve_votes + (optimistic?.approve ?? 0);
     const rejectVotes = approval.vote_summary.reject_votes + (optimistic?.reject ?? 0);
     return {
@@ -61,11 +61,11 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
     return ruleRefs;
   }
 
-  const selectedApproval = selectedApprovalId ? visibleApprovals.find((approval) => approval.request_id === selectedApprovalId) ?? null : null;
+  const selectedApproval = selectedOrderId ? visibleApprovals.find((approval) => approval.order_id === selectedOrderId) ?? null : null;
 
   function renderApprovalDetails(approval: ApprovalItemDTO, detailMode: 'card' | 'modal') {
     const voteSummary = displayedVoteSummary(approval);
-    const voteDisabled = voteLocked(approval.request_id);
+    const voteDisabled = voteLocked(approval.order_id);
     const matchedRuleNames = resolveMatchedRules(approval.matched_rules);
     const isModal = detailMode === 'modal';
 
@@ -119,10 +119,10 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
           </div>
           {status?.public_voting_enabled && (
             <div className="approval-vote-actions">
-              <button className="accent-button accent-button-approve" disabled={voteDisabled} onClick={() => handleVote(approval.request_id, true)}>
+              <button className="accent-button accent-button-approve" disabled={voteDisabled} onClick={() => handleVote(approval.order_id, true)}>
                 {voteDisabled ? 'Vote Saved' : 'Vote Approve'}
               </button>
-              <button className="accent-button accent-button-reject" disabled={voteDisabled} onClick={() => handleVote(approval.request_id, false)}>
+              <button className="accent-button accent-button-reject" disabled={voteDisabled} onClick={() => handleVote(approval.order_id, false)}>
                 {voteDisabled ? 'Vote Saved' : 'Vote Reject'}
               </button>
             </div>
@@ -132,11 +132,11 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
         <div className="approval-final-actions">
           <p className="section-label !mb-0">Final Company Decision</p>
           <div className="flex flex-wrap gap-2">
-            <button className="kinetic-button" disabled={finalizeBusyId === approval.request_id} onClick={() => handleFinalize(approval.request_id, true)}>
-              {finalizeBusyId === approval.request_id && finalizeBusyAction === 'finalize-approve' ? 'Finalizing…' : 'Final approve'}
+            <button className="kinetic-button" disabled={finalizeBusyId === approval.order_id} onClick={() => handleFinalize(approval.order_id, true)}>
+              {finalizeBusyId === approval.order_id && finalizeBusyAction === 'finalize-approve' ? 'Finalizing…' : 'Final approve'}
             </button>
-            <button className="kinetic-button kinetic-button-muted" disabled={finalizeBusyId === approval.request_id} onClick={() => handleFinalize(approval.request_id, false)}>
-              {finalizeBusyId === approval.request_id && finalizeBusyAction === 'finalize-reject' ? 'Rejecting…' : 'Final reject'}
+            <button className="kinetic-button kinetic-button-muted" disabled={finalizeBusyId === approval.order_id} onClick={() => handleFinalize(approval.order_id, false)}>
+              {finalizeBusyId === approval.order_id && finalizeBusyAction === 'finalize-reject' ? 'Rejecting…' : 'Final reject'}
             </button>
           </div>
         </div>
@@ -144,8 +144,8 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
     );
   }
 
-  function handleVote(requestId: string, approved: boolean) {
-    if (voteLocked(requestId)) {
+  function handleVote(orderId: string, approved: boolean) {
+    if (voteLocked(orderId)) {
       setError('Please wait a few seconds before voting on the same approval again.');
       return;
     }
@@ -153,45 +153,45 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
     setError(null);
     setOptimisticVotes((current) => ({
       ...current,
-      [requestId]: {
-        approve: (current[requestId]?.approve ?? 0) + (approved ? 1 : 0),
-        reject: (current[requestId]?.reject ?? 0) + (approved ? 0 : 1),
+      [orderId]: {
+        approve: (current[orderId]?.approve ?? 0) + (approved ? 1 : 0),
+        reject: (current[orderId]?.reject ?? 0) + (approved ? 0 : 1),
       },
     }));
-    setVoteCooldownUntil((current) => ({ ...current, [requestId]: Date.now() + VOTE_COOLDOWN_MS }));
+    setVoteCooldownUntil((current) => ({ ...current, [orderId]: Date.now() + VOTE_COOLDOWN_MS }));
 
     window.setTimeout(() => {
       setVoteCooldownUntil((current) => {
         const next = { ...current };
-        if ((next[requestId] ?? 0) <= Date.now()) {
-          delete next[requestId];
+        if ((next[orderId] ?? 0) <= Date.now()) {
+          delete next[orderId];
         }
         return next;
       });
       setOptimisticVotes((current) => {
         const next = { ...current };
-        delete next[requestId];
+        delete next[orderId];
         return next;
       });
     }, VOTE_COOLDOWN_MS);
 
-    onVote(requestId, approved).catch((err) => {
+    onVote(orderId, approved).catch((err) => {
       setOptimisticVotes((current) => {
         const next = { ...current };
-        delete next[requestId];
+        delete next[orderId];
         return next;
       });
       setError(err instanceof Error ? err.message : 'Vote failed');
     });
   }
 
-  async function handleFinalize(requestId: string, approved: boolean) {
-    setFinalizeBusyId(requestId);
+  async function handleFinalize(orderId: string, approved: boolean) {
+    setFinalizeBusyId(orderId);
     setFinalizeBusyAction(approved ? 'finalize-approve' : 'finalize-reject');
     setError(null);
     persistOperatorContext(operatorToken, reviewer);
     try {
-      await onFinalize(requestId, approved, reviewer, null, operatorToken || undefined);
+      await onFinalize(orderId, approved, reviewer, null, operatorToken || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Finalize failed');
     } finally {
@@ -260,11 +260,11 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
               const matchedRuleNames = resolveMatchedRules(approval.matched_rules);
               return (
                 <button
-                  key={approval.request_id}
+                  key={approval.order_id}
                   type="button"
                   className="console-inset approval-gallery-card"
                   onClick={() => {
-                    setSelectedApprovalId(approval.request_id);
+                    setSelectedOrderId(approval.order_id);
                     setError(null);
                   }}
                 >
@@ -291,7 +291,7 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
           </div>
 
           {selectedApproval && (
-            <div className="approval-modal-overlay" onClick={() => setSelectedApprovalId(null)}>
+            <div className="approval-modal-overlay" onClick={() => setSelectedOrderId(null)}>
               <div className="console-card approval-modal" onClick={(event) => event.stopPropagation()}>
                 <div className="console-panel-header approval-modal-header">
                   <div>
@@ -301,7 +301,7 @@ export function ApprovalQueue({ approvals, status, onVote, onFinalize, mode = 'q
                       {selectedApproval.bot_action.replace(/_/g, ' ')} · {timeAgo(selectedApproval.created_at)}
                     </p>
                   </div>
-                  <button type="button" className="ghost-pill ghost-pill-button" onClick={() => setSelectedApprovalId(null)}>
+                  <button type="button" className="ghost-pill ghost-pill-button" onClick={() => setSelectedOrderId(null)}>
                     Close
                   </button>
                 </div>

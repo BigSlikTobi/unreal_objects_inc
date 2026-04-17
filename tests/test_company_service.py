@@ -619,6 +619,69 @@ async def test_finalize_rejects_gracefully_when_payload_is_empty(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_finalize_approval_by_order_works_without_request_id(monkeypatch):
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
+    await service.ingest_order(make_order("order-no-req", waste_type=WasteType.RECYCLING, quantity_m3=1.5, price=150.0))
+    await service.claim_order("order-no-req", bot_id="bot-alpha")
+    await service.submit_order_result(
+        order_id="order-no-req",
+        bot_id="bot-alpha",
+        outcome=BotDecisionOutcome.APPROVAL_REQUIRED,
+        bot_action="accept_and_route",
+        action_payload={"target_container_id": container.container_id, "route_quantity_m3": 1.5},
+        decision_summary="Need approval.",
+        request_id=None,  # bot did not forward the DC request_id
+    )
+
+    submitted: dict = {}
+
+    async def fake_submit(request_id: str, approved: bool, approver: str) -> None:
+        submitted["called"] = True
+
+    monkeypatch.setattr(service, "_submit_unreal_objects_approval", fake_submit)
+
+    result = await service.finalize_approval_by_order("order-no-req", approved=True, reviewer="ops")
+
+    assert result.order_id == "order-no-req"
+    assert result.final_state == BotDecisionOutcome.APPROVED.value
+    # DC must not be notified when we have no request_id.
+    assert "called" not in submitted
+
+
+@pytest.mark.asyncio
+async def test_by_order_and_by_request_endpoints_do_not_collide(monkeypatch):
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
+    for suffix in ("a", "b"):
+        await service.ingest_order(make_order(f"order-pair-{suffix}", waste_type=WasteType.RECYCLING, quantity_m3=1.0, price=120.0))
+        await service.claim_order(f"order-pair-{suffix}", bot_id="bot-alpha")
+        await service.submit_order_result(
+            order_id=f"order-pair-{suffix}",
+            bot_id="bot-alpha",
+            outcome=BotDecisionOutcome.APPROVAL_REQUIRED,
+            bot_action="accept_and_route",
+            action_payload={"target_container_id": container.container_id, "route_quantity_m3": 1.0},
+            decision_summary="Need approval.",
+            request_id=None,  # both missing request_id — the old code would collide
+        )
+
+    async def noop_submit(request_id: str, approved: bool, approver: str) -> None:
+        pass
+
+    monkeypatch.setattr(service, "_submit_unreal_objects_approval", noop_submit)
+
+    await service.finalize_approval_by_order("order-pair-a", approved=True, reviewer="ops")
+    # After finalizing one, the other must still appear in the queue.
+    approvals = await service.get_approvals()
+    pending_ids = {item.order_id for item in approvals}
+    assert "order-pair-a" not in pending_ids
+    assert "order-pair-b" in pending_ids
+
+
+@pytest.mark.asyncio
 async def test_persistence_restores_runtime_state(tmp_path):
     persistence_path = tmp_path / "company-state.json"
     service = CompanySimulationService(
