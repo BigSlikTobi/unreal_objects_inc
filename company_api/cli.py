@@ -23,6 +23,7 @@ from .service import DEFAULT_ACCELERATION, DEFAULT_ORDER_INTERVAL_REAL_SECONDS
 @click.option("--operator-auth/--no-operator-auth", default=None, help="Require an operator token for approval finalization.")
 @click.option("--operator-token", default=None, help="Shared operator token used for protected approval finalization.")
 @click.option("--internal-api-key", default=None, help="Shared internal API key sent as X-Internal-Key to Unreal Objects services.")
+@click.option("--rule-group-id", default=None, help="Decision Center rule group ID bots should evaluate against. Surfaced via /api/v1/status.")
 @click.option("--persistence-path", default=None, type=click.Path(), help="Optional JSON snapshot path for persisted hosted state.")
 @click.option("--cost-policy", default=None, type=click.Path(exists=True), help="Optional JSON file with cost policy overrides.")
 @click.option(
@@ -51,6 +52,7 @@ def main(
     operator_auth: bool | None,
     operator_token: str | None,
     internal_api_key: str | None,
+    rule_group_id: str | None,
     persistence_path: str | None,
     cost_policy: str | None,
     generator_mode: str,
@@ -74,6 +76,7 @@ def main(
         operator_auth_enabled=operator_auth,
         operator_token=operator_token,
         internal_api_key=internal_api_key,
+        rule_group_id=rule_group_id,
         persistence_path=persistence_path,
         cost_policy_path=cost_policy,
         llm_model=llm_model,

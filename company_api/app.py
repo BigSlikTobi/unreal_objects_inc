@@ -50,6 +50,7 @@ def build_app(
     operator_auth_enabled: bool | None = None,
     operator_token: str | None = None,
     internal_api_key: str | None = None,
+    rule_group_id: str | None = None,
     persistence_path: str | Path | None = None,
     cost_policy_path: str | Path | None = None,
 ) -> FastAPI:
@@ -69,6 +70,7 @@ def build_app(
         operator_auth_enabled=operator_auth_enabled,
         operator_token=operator_token,
         internal_api_key=internal_api_key,
+        rule_group_id=rule_group_id,
         persistence_path=persistence_path,
         cost_policy_path=cost_policy_path,
     )

@@ -101,6 +101,7 @@ class CompanySimulationService:
         operator_auth_enabled: bool | None = None,
         operator_token: str | None = None,
         internal_api_key: str | None = None,
+        rule_group_id: str | None = None,
         persistence_path: str | Path | None = None,
         bot_connection_timeout_seconds: int = 120,
         claim_expiry_seconds: int = 120,
@@ -121,6 +122,7 @@ class CompanySimulationService:
         self.public_voting_enabled = public_voting_enabled if public_voting_enabled is not None else True
         self.operator_auth_enabled = operator_auth_enabled if operator_auth_enabled is not None else deployment_mode == "hosted"
         self.operator_token = operator_token
+        self.rule_group_id = rule_group_id
         self.persistence_path = Path(persistence_path) if persistence_path else None
         self.persistence_backend = "json" if self.persistence_path else "memory"
         self.bot_connection_timeout_seconds = bot_connection_timeout_seconds
@@ -515,6 +517,7 @@ class CompanySimulationService:
             bot_identity=self.bot_identity,
             bot_last_seen_at=isoformat(self.bot_last_seen_at),
             current_run_id=self._current_run_id,
+            rule_group_id=self.rule_group_id,
             stats=stats,
         )
 

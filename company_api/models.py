@@ -48,6 +48,7 @@ class CompanyStatus(BaseModel):
     bot_identity: str | None = None
     bot_last_seen_at: str | None = None
     current_run_id: int
+    rule_group_id: str | None = None  # Decision Center group bots should evaluate against
     stats: CompanyStats
 
 
