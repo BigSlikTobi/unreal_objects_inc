@@ -286,13 +286,26 @@ class ApprovalDecisionMetadata(BaseModel):
 
 
 class ApprovalItemDTO(BaseModel):
+    # Canonical identifier used by the dashboard/operator to act on this approval,
+    # regardless of whether it originated from a customer order or a proactive
+    # container-action proposal.
+    approval_id: str
+    kind: str = "order"  # "order" | "container_action"
     request_id: str
-    order_id: str
+    order_id: str = ""  # kept for backward compat; empty for container actions
+    proposal_id: str | None = None
+    container_id: str | None = None
     title: str
+    # For container-action approvals there is no external customer; we reuse
+    # this field for the bot's rationale so existing UI still has something
+    # human-readable to show.
     customer_request: str
     bot_action: str
+    action_payload: dict = Field(default_factory=dict)
     baseline_economics: BaselineEconomicsDTO | None = None
     projected_action_economics: ProjectedActionEconomicsDTO | None = None
+    projected_cost_eur: float | None = None
+    projected_savings_eur: float | None = None
     decision_summary: str | None = None
     matched_rules: list[str] = Field(default_factory=list)
     created_at: str
@@ -317,10 +330,45 @@ class ApprovalFinalizeRequest(BaseModel):
 
 
 class ApprovalFinalizeResponse(BaseModel):
+    approval_id: str
+    kind: str = "order"
     request_id: str
-    order_id: str
+    order_id: str = ""
+    proposal_id: str | None = None
     status: str
     final_state: str
+
+
+class ContainerActionProposalRequest(BaseModel):
+    """Payload posted by a bot when the Decision Center returns ASK_FOR_APPROVAL
+    for a proactive container action. Parks the proposed action in the company
+    approval queue so a human operator can decide."""
+    container_id: str
+    bot_id: str
+    bot_action: str = "schedule_early_empty"
+    action_payload: dict = Field(default_factory=dict)
+    request_id: str | None = None
+    rationale: str  # short human-readable justification (what + why)
+    decision_summary: str | None = None
+    matched_rules: list[str] = Field(default_factory=list)
+    projected_cost_eur: float | None = None
+    projected_savings_eur: float | None = None
+
+
+class ContainerActionProposal(BaseModel):
+    proposal_id: str
+    container_id: str
+    bot_id: str
+    bot_action: str
+    action_payload: dict = Field(default_factory=dict)
+    request_id: str | None = None
+    rationale: str
+    decision_summary: str | None = None
+    matched_rules: list[str] = Field(default_factory=list)
+    projected_cost_eur: float | None = None
+    projected_savings_eur: float | None = None
+    created_at: str
+    status: str = "blocked"  # blocked | approved | rejected
 
 
 class OrderClaimRequest(BaseModel):

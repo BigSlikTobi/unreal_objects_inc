@@ -20,6 +20,7 @@ from .models import (
     ApprovalsResponse,
     BotInboxOrderDTO,
     BotOrdersResponse,
+    ContainerActionProposalRequest,
     DisposalOrderWebhookPayload,
     EventsResponse,
     OrderClaimRequest,
@@ -253,6 +254,56 @@ def build_app(
             raise HTTPException(status_code=404, detail="Approval request not found") from exc
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"Failed to finalize approval with Unreal Objects: {exc}") from exc
+
+    @app.post("/api/v1/approvals/by-id/{approval_id}/vote")
+    async def vote_on_approval_by_id(approval_id: str, payload: ApprovalVoteRequest):
+        if not service.public_voting_enabled:
+            raise HTTPException(status_code=404, detail="Public voting is disabled")
+        try:
+            return await service.record_public_vote_by_id(approval_id=approval_id, approved=payload.approved)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Approval request not found") from exc
+
+    @app.post("/api/v1/approvals/by-id/{approval_id}/finalize")
+    async def finalize_approval_by_id(
+        approval_id: str,
+        payload: ApprovalFinalizeRequest,
+        x_operator_token: str | None = Header(default=None),
+    ):
+        require_operator(x_operator_token)
+        try:
+            return await service.finalize_approval_by_id(
+                approval_id=approval_id,
+                approved=payload.approved,
+                reviewer=payload.reviewer,
+                rationale=payload.rationale,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Approval request not found") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"Failed to finalize approval with Unreal Objects: {exc}") from exc
+
+    @app.post("/api/v1/container-actions/propose")
+    async def propose_container_action(payload: ContainerActionProposalRequest):
+        """Bot-facing endpoint. Parks a proposed container action in the approval
+        queue for human operator review. The action is NOT executed until an
+        operator finalizes the approval via the dashboard."""
+        try:
+            proposal = await service.propose_container_action(
+                container_id=payload.container_id,
+                bot_id=payload.bot_id,
+                bot_action=payload.bot_action,
+                action_payload=payload.action_payload,
+                request_id=payload.request_id,
+                rationale=payload.rationale,
+                decision_summary=payload.decision_summary,
+                matched_rules=payload.matched_rules,
+                projected_cost_eur=payload.projected_cost_eur,
+                projected_savings_eur=payload.projected_savings_eur,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return proposal
 
     @app.post("/api/v1/webhooks/orders", response_model=OrdersResponse, status_code=202)
     async def orders_webhook(payload: DisposalOrderWebhookPayload):

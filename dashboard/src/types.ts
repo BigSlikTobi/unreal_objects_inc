@@ -224,14 +224,23 @@ export interface ApprovalDecisionMetadata {
   decided_at: string;
 }
 
+export type ApprovalKind = 'order' | 'container_action';
+
 export interface ApprovalItemDTO {
+  approval_id: string;
+  kind: ApprovalKind;
   request_id: string;
   order_id: string;
+  proposal_id: string | null;
+  container_id: string | null;
   title: string;
   customer_request: string;
   bot_action: string;
+  action_payload: Record<string, unknown>;
   baseline_economics: BaselineEconomicsDTO | null;
   projected_action_economics: ProjectedActionEconomicsDTO | null;
+  projected_cost_eur: number | null;
+  projected_savings_eur: number | null;
   decision_summary: string | null;
   matched_rules: string[];
   created_at: string;

@@ -2285,6 +2285,30 @@ body {
   gap: 0.5rem;
 }
 
+.approval-container-econ {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-inset);
+  padding: 0.75rem;
+}
+
+.approval-container-econ-row {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.approval-container-econ-row strong {
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 1.125rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-primary);
+}
+
 /* ─────────────────────────────────────────────
    Bot Activity Page
    ───────────────────────────────────────────── */

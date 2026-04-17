@@ -682,6 +682,120 @@ async def test_by_order_and_by_request_endpoints_do_not_collide(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_container_action_proposal_appears_in_approvals_and_executes_on_approve():
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.fill_level_m3 > 0.1)
+
+    proposal = await service.propose_container_action(
+        container_id=container.container_id,
+        bot_id="phil",
+        bot_action="schedule_early_empty",
+        action_payload={},
+        request_id="dc-req-123",
+        rationale="Fill ratio is 0.85 — preventing overflow saves 350 EUR penalty.",
+        decision_summary="Governance returned ASK_FOR_APPROVAL for schedule_early_empty.",
+        matched_rules=["container_overflow_economics"],
+        projected_cost_eur=13.84,
+        projected_savings_eur=350.0,
+    )
+
+    approvals = await service.get_approvals()
+    proposal_items = [a for a in approvals if a.kind == "container_action"]
+    assert len(proposal_items) == 1
+    assert proposal_items[0].approval_id == proposal.proposal_id
+    assert proposal_items[0].container_id == container.container_id
+    assert proposal_items[0].projected_savings_eur == 350.0
+
+    result = await service.finalize_approval_by_id(
+        proposal.proposal_id,
+        approved=True,
+        reviewer="ops",
+    )
+
+    assert result.kind == "container_action"
+    assert result.final_state == BotDecisionOutcome.APPROVED.value
+    assert service.containers[container.container_id].fill_level_m3 == 0.0
+    assert service.overflow_prevented_count == 1
+    assert all(a.kind != "container_action" for a in await service.get_approvals())
+
+
+@pytest.mark.asyncio
+async def test_container_action_proposal_reject_does_not_execute():
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.fill_level_m3 > 0.1)
+    initial_fill = container.fill_level_m3
+
+    proposal = await service.propose_container_action(
+        container_id=container.container_id,
+        bot_id="phil",
+        bot_action="schedule_early_empty",
+        action_payload={},
+        request_id=None,
+        rationale="Testing rejection path.",
+        decision_summary=None,
+        matched_rules=[],
+        projected_cost_eur=None,
+        projected_savings_eur=None,
+    )
+
+    result = await service.finalize_approval_by_id(
+        proposal.proposal_id,
+        approved=False,
+        reviewer="ops",
+    )
+
+    assert result.final_state == BotDecisionOutcome.REJECTED.value
+    assert service.containers[container.container_id].fill_level_m3 == initial_fill
+    assert service.overflow_prevented_count == 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_by_id_dispatches_order_vs_proposal(monkeypatch):
+    service = CompanySimulationService(initial_order_count=0)
+    await service.initialize()
+    container = next(container for container in service.containers.values() if container.waste_type == WasteType.RECYCLING)
+
+    await service.ingest_order(make_order("order-dispatch", waste_type=WasteType.RECYCLING, quantity_m3=1.0, price=110.0))
+    await service.claim_order("order-dispatch", bot_id="bot-alpha")
+    await service.submit_order_result(
+        order_id="order-dispatch",
+        bot_id="bot-alpha",
+        outcome=BotDecisionOutcome.APPROVAL_REQUIRED,
+        bot_action="accept_and_route",
+        action_payload={"target_container_id": container.container_id, "route_quantity_m3": 1.0},
+        decision_summary="Need approval.",
+        request_id="req-dispatch",
+    )
+    proposal = await service.propose_container_action(
+        container_id=container.container_id,
+        bot_id="phil",
+        bot_action="schedule_early_empty",
+        action_payload={},
+        request_id=None,
+        rationale="Testing dispatch.",
+        decision_summary=None,
+        matched_rules=[],
+        projected_cost_eur=None,
+        projected_savings_eur=None,
+    )
+
+    async def noop_submit(request_id: str, approved: bool, approver: str) -> None:
+        pass
+
+    monkeypatch.setattr(service, "_submit_unreal_objects_approval", noop_submit)
+
+    order_res = await service.finalize_approval_by_id("order-dispatch", approved=True, reviewer="ops")
+    prop_res = await service.finalize_approval_by_id(proposal.proposal_id, approved=True, reviewer="ops")
+
+    assert order_res.kind == "order"
+    assert order_res.order_id == "order-dispatch"
+    assert prop_res.kind == "container_action"
+    assert prop_res.proposal_id == proposal.proposal_id
+
+
+@pytest.mark.asyncio
 async def test_persistence_restores_runtime_state(tmp_path):
     persistence_path = tmp_path / "company-state.json"
     service = CompanySimulationService(

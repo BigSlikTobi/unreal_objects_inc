@@ -42,6 +42,7 @@ from .models import (
     BaselineEconomicsDTO,
     BotDecisionOutcome,
     BotInboxOrderDTO,
+    ContainerActionProposal,
     CompanyStats,
     CompanyStatus,
     ContainerDTO,
@@ -133,6 +134,7 @@ class CompanySimulationService:
         self.containers: dict[str, WasteContainer] = {}
         self.approval_votes: dict[str, ApprovalVoteState] = {}
         self.final_decisions: dict[str, ApprovalDecisionMetadata] = {}
+        self.container_action_proposals: dict[str, ContainerActionProposal] = {}
         self._lock = asyncio.Lock()
         self._virtual_start = utcnow()
         self._real_start = utcnow()
@@ -621,14 +623,172 @@ class CompanySimulationService:
     async def get_approvals(self) -> list[ApprovalItemDTO]:
         async with self._lock:
             self._refresh_runtime_locked(self._virtual_now())
-            items = [
+            items: list[ApprovalItemDTO] = [
                 self._approval_item_from_record(record)
                 for record in self.records.values()
                 if record.dto.status == OrderStatus.BLOCKED.value
                 and self._approval_key(record) not in self.final_decisions
             ]
+            items.extend(
+                self._approval_item_from_proposal(proposal)
+                for proposal in self.container_action_proposals.values()
+                if proposal.status == "blocked"
+            )
         items.sort(key=lambda item: item.created_at, reverse=True)
         return items
+
+    async def propose_container_action(
+        self,
+        *,
+        container_id: str,
+        bot_id: str,
+        bot_action: str,
+        action_payload: dict,
+        request_id: str | None,
+        rationale: str,
+        decision_summary: str | None,
+        matched_rules: list[str],
+        projected_cost_eur: float | None,
+        projected_savings_eur: float | None,
+    ) -> ContainerActionProposal:
+        async with self._lock:
+            now = self._virtual_now()
+            self._refresh_runtime_locked(now)
+            if container_id not in self.containers:
+                raise KeyError(f"Container {container_id} not found")
+            proposal = ContainerActionProposal(
+                proposal_id=str(uuid.uuid4()),
+                container_id=container_id,
+                bot_id=bot_id,
+                bot_action=bot_action,
+                action_payload=action_payload or {},
+                request_id=request_id or None,
+                rationale=rationale,
+                decision_summary=decision_summary,
+                matched_rules=list(matched_rules or []),
+                projected_cost_eur=projected_cost_eur,
+                projected_savings_eur=projected_savings_eur,
+                created_at=isoformat(now) or "",
+            )
+            self.container_action_proposals[proposal.proposal_id] = proposal
+            self._mark_bot_seen(bot_id)
+            await self._persist_state_locked()
+            return proposal
+
+    async def record_public_vote_by_id(self, approval_id: str, approved: bool) -> ApprovalItemDTO:
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self._find_blocked_record(approval_id)
+            if record is not None:
+                return await self._record_vote_locked(record, approved)
+            proposal = self._find_blocked_proposal(approval_id)
+            if proposal is None:
+                raise KeyError(approval_id)
+            key = proposal.proposal_id
+            vote_state = self.approval_votes.setdefault(key, ApprovalVoteState())
+            if approved:
+                vote_state.approve_votes += 1
+            else:
+                vote_state.reject_votes += 1
+            item = self._approval_item_from_proposal(proposal)
+            await self._persist_state_locked()
+            return item
+
+    async def finalize_approval_by_id(
+        self,
+        approval_id: str,
+        approved: bool,
+        reviewer: str,
+        rationale: str | None = None,
+    ) -> ApprovalFinalizeResponse:
+        async with self._lock:
+            self._refresh_runtime_locked(self._virtual_now())
+            record = self._find_blocked_record(approval_id)
+            if record is not None:
+                return await self._finalize_approval_locked(record, approved, reviewer, rationale)
+            proposal = self._find_blocked_proposal(approval_id)
+            if proposal is None:
+                raise KeyError(approval_id)
+            return await self._finalize_container_proposal_locked(proposal, approved, reviewer, rationale)
+
+    def _find_blocked_record(self, approval_id: str) -> OrderRecord | None:
+        record = self.records.get(approval_id)
+        if record is not None and record.dto.status == OrderStatus.BLOCKED.value:
+            return record
+        return None
+
+    def _find_blocked_proposal(self, approval_id: str) -> ContainerActionProposal | None:
+        proposal = self.container_action_proposals.get(approval_id)
+        if proposal is not None and proposal.status == "blocked":
+            return proposal
+        return None
+
+    async def _finalize_container_proposal_locked(
+        self,
+        proposal: ContainerActionProposal,
+        approved: bool,
+        reviewer: str,
+        rationale: str | None,
+    ) -> ApprovalFinalizeResponse:
+        request_id = proposal.request_id or ""
+        key = proposal.proposal_id
+        self.final_decisions[key] = ApprovalDecisionMetadata(
+            approved=approved,
+            reviewer=reviewer,
+            rationale=rationale,
+            decided_at=isoformat(self._virtual_now()) or "",
+        )
+        if approved:
+            try:
+                await self._execute_container_action_locked(proposal)
+                proposal.status = "approved"
+                final_state = BotDecisionOutcome.APPROVED.value
+            except Exception:
+                proposal.status = "rejected"
+                final_state = BotDecisionOutcome.REJECTED.value
+        else:
+            proposal.status = "rejected"
+            final_state = BotDecisionOutcome.REJECTED.value
+        await self._persist_state_locked()
+
+        if request_id:
+            try:
+                await self._submit_unreal_objects_approval(request_id=request_id, approved=approved, approver=reviewer)
+            except Exception:
+                pass
+
+        return ApprovalFinalizeResponse(
+            approval_id=proposal.proposal_id,
+            kind="container_action",
+            request_id=request_id,
+            order_id="",
+            proposal_id=proposal.proposal_id,
+            status=proposal.status,
+            final_state=final_state,
+        )
+
+    async def _execute_container_action_locked(self, proposal: ContainerActionProposal) -> None:
+        """Apply the approved bot action. Currently only schedule_early_empty is supported."""
+        container = self.containers.get(proposal.container_id)
+        if container is None:
+            raise ValueError(f"Container {proposal.container_id} no longer exists")
+        if proposal.bot_action != "schedule_early_empty":
+            raise ValueError(f"Unsupported container action: {proposal.bot_action}")
+        if container.fill_level_m3 <= 0:
+            raise ValueError("Container is already empty")
+        now = self._virtual_now()
+        fill_ratio = container.fill_level_m3 / container.capacity_m3 if container.capacity_m3 > 0 else 0.0
+        hours_to_pickup = max(0.0, (container.next_empty_at - now).total_seconds() / 3600)
+        dynamic_cost = compute_dynamic_early_empty_cost(
+            base_cost=container.base_early_empty_cost_eur,
+            fill_ratio=fill_ratio,
+            hours_to_pickup=hours_to_pickup,
+            overflow_penalty_eur=self.cost_policy.overflow_penalty_eur,
+        )
+        self._apply_early_empty(container, now, dynamic_cost, "proactive_early_empty")
+        self.overflow_prevented_count += 1
+        self.overflow_penalty_avoided_eur += self.cost_policy.overflow_penalty_eur
+        self.proactive_early_empty_cost_eur += dynamic_cost
 
     async def record_public_vote(self, request_id: str, approved: bool) -> ApprovalItemDTO:
         async with self._lock:
@@ -690,6 +850,8 @@ class CompanySimulationService:
                 final_state = BotDecisionOutcome.REJECTED.value
                 await self._persist_state_locked()
                 return ApprovalFinalizeResponse(
+                    approval_id=record.dto.order_id,
+                    kind="order",
                     request_id=request_id,
                     order_id=record.dto.order_id,
                     status=record.dto.status,
@@ -717,6 +879,8 @@ class CompanySimulationService:
                 pass
 
         return ApprovalFinalizeResponse(
+            approval_id=record.dto.order_id,
+            kind="order",
             request_id=request_id,
             order_id=record.dto.order_id,
             status=record.dto.status,
@@ -811,6 +975,7 @@ class CompanySimulationService:
             }
             self.approval_votes = {}
             self.final_decisions = {}
+            self.container_action_proposals = {}
             self.claimed_at = {}
             self.bot_identity = None
             self.bot_last_seen_at = None
@@ -983,6 +1148,7 @@ class CompanySimulationService:
         self.source_events = {}
         self.approval_votes = {}
         self.final_decisions = {}
+        self.container_action_proposals = {}
         self.bot_identity = None
         self.bot_last_seen_at = None
         self.receivables = []
@@ -1228,11 +1394,14 @@ class CompanySimulationService:
         key = self._approval_key(record)
         votes = self.approval_votes.get(key, ApprovalVoteState())
         return ApprovalItemDTO(
+            approval_id=dto.order_id,
+            kind="order",
             request_id=record.dto.request_id or "",
             order_id=dto.order_id,
             title=dto.title,
             customer_request=dto.customer_request,
             bot_action=dto.bot_action or "unknown",
+            action_payload=dict(record.dto.action_payload or {}),
             baseline_economics=dto.baseline_economics,
             projected_action_economics=dto.projected_action_economics,
             decision_summary=dto.decision_summary,
@@ -1245,6 +1414,35 @@ class CompanySimulationService:
                 "total_votes": votes.approve_votes + votes.reject_votes,
             },
             final_decision=self.final_decisions.get(key),
+        )
+
+    def _approval_item_from_proposal(self, proposal: ContainerActionProposal) -> ApprovalItemDTO:
+        votes = self.approval_votes.get(proposal.proposal_id, ApprovalVoteState())
+        container = self.containers.get(proposal.container_id)
+        container_label = container.label if container else proposal.container_id
+        return ApprovalItemDTO(
+            approval_id=proposal.proposal_id,
+            kind="container_action",
+            request_id=proposal.request_id or "",
+            order_id="",
+            proposal_id=proposal.proposal_id,
+            container_id=proposal.container_id,
+            title=f"{proposal.bot_action.replace('_', ' ').title()} — {container_label}",
+            customer_request=proposal.rationale,
+            bot_action=proposal.bot_action,
+            action_payload=dict(proposal.action_payload or {}),
+            projected_cost_eur=proposal.projected_cost_eur,
+            projected_savings_eur=proposal.projected_savings_eur,
+            decision_summary=proposal.decision_summary,
+            matched_rules=list(proposal.matched_rules),
+            created_at=proposal.created_at,
+            status=proposal.status,
+            vote_summary={
+                "approve_votes": votes.approve_votes,
+                "reject_votes": votes.reject_votes,
+                "total_votes": votes.approve_votes + votes.reject_votes,
+            },
+            final_decision=self.final_decisions.get(proposal.proposal_id),
         )
 
     async def _submit_unreal_objects_approval(self, request_id: str, approved: bool, approver: str) -> None:
@@ -1308,6 +1506,7 @@ class CompanySimulationService:
             "containers": {container_id: container.model_dump(mode="json") for container_id, container in self.containers.items()},
             "approval_votes": {request_id: state.model_dump(mode="json") for request_id, state in self.approval_votes.items()},
             "final_decisions": {request_id: state.model_dump(mode="json") for request_id, state in self.final_decisions.items()},
+            "container_action_proposals": {pid: proposal.model_dump(mode="json") for pid, proposal in self.container_action_proposals.items()},
             "claimed_at": {order_id: isoformat(ts) for order_id, ts in self.claimed_at.items()},
         }
         self.persistence_path.write_text(json.dumps(snapshot, indent=2))
@@ -1394,6 +1593,10 @@ class CompanySimulationService:
             self.final_decisions = {
                 request_id: ApprovalDecisionMetadata.model_validate(state_payload)
                 for request_id, state_payload in payload.get("final_decisions", {}).items()
+            }
+            self.container_action_proposals = {
+                pid: ContainerActionProposal.model_validate(proposal_payload)
+                for pid, proposal_payload in payload.get("container_action_proposals", {}).items()
             }
             self.claimed_at = {
                 order_id: datetime.fromisoformat(ts)
